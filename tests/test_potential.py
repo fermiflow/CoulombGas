@@ -4,7 +4,7 @@ config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 import numpy as np
-from potential import kpoints, Madelung, Ewald
+from potential import kpoints, Madelung, psi
 
 def test_kpoints():
     Gmax = 4
@@ -16,14 +16,14 @@ def test_kpoints():
         assert G.shape[1] == dim
 
 def generic_test_ewald(dim, x):
-    for kappa in range(5, 9):
+    for kappa in range(5, 11):
         print("---- dim = %d, kappa = %d ----" % (dim, kappa))
         for Gmax in range(5, 16):
             G = kpoints(dim, Gmax)
             print("Gmax:", Gmax, "\t\tG.shape:", G.shape, end="\t\t")
             Vconst = Madelung(dim, kappa, G)
             print("Vconst:", Vconst, end="\t\t")
-            potential = Ewald(x, kappa, G, Vconst)
+            potential = psi(x, kappa, G)
             print("potential:", potential)
 
 def test_ewald_3D():

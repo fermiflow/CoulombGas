@@ -69,12 +69,6 @@ def logpsi_grad_laplacian(x, params, state_idx, logpsi):
 
     return logpsix, grad, laplacian
 
-from potential import Ewald
-
-@partial(jax.vmap, in_axes=(0, None, None, None, None, None), out_axes=0)
-def potential_energy(x, kappa, G, Vconst, L, rs):
-    return 2*rs/L * Ewald(x/L, kappa, G, Vconst)
-
 def MCMC_thermalize(key_init, batch, n, dim, L,
                     sampler, params, logp, mc_steps, mc_therm):
     x_init = jax.random.uniform(key_init, (batch, n, dim), minval=0., maxval=L)
@@ -95,6 +89,7 @@ def sample_x(key, x, sampler, params, logp, mc_steps):
     x = mcmc(lambda x: logp(x, params, state_indices), x, key_MCMC, mc_steps)
     return key, state_indices, x
 
+from potential import potential_energy
 from state_sampler import make_softmax_sampler
 from MCMC import mcmc
 
@@ -117,7 +112,7 @@ def make_loss(logp, mc_steps, logpsi,
         print("grad.shape:", grad.shape)
         print("laplacian.shape:", laplacian.shape)
         kinetic = -laplacian - (grad**2).sum(axis=(-2, -1))
-        potential = potential_energy(x, kappa, G, Vconst, L, rs)
+        potential = potential_energy(x, kappa, G, L, rs) + Vconst
 
         Eloc = jax.lax.stop_gradient(kinetic + potential)
         E = Eloc.mean()

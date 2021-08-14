@@ -35,10 +35,12 @@ def Madelung(dim, kappa, G):
 
     return g_k.sum() + g_0 - 2*kappa/jnp.sqrt(jnp.pi)
 
-def Ewald(x, kappa, G, Vconst):
+def psi(x, kappa, G):
     """
-        Total electrostatic energy (per cell) of a periodic system of lattice constant
-    L=1, including both the coordinate-dependent and the constant Madelung part `Vconst`.
+        The electron coordinate-dependent part 1/2 \sum_{i}\sum_{j neq i} psi(r_i, r_j)
+    of the electrostatic energy (per cell) for a periodic system of lattice constant L=1.
+        NOTE: to account for the Madelung part `Vconst` returned by the function
+    `Madelung`, add the term 0.5*n*Vconst.
     """
     n, dim = x.shape
 
@@ -61,5 +63,17 @@ def Ewald(x, kappa, G, Vconst):
     V_longrange = ( g_k * jnp.cos(2*jnp.pi * G.dot(rij.T)).sum(axis=-1) ).sum() \
                     + g_0 * rij.shape[0]
 
-    potential = V_shortrange + V_longrange + 0.5*n*Vconst
+    potential = V_shortrange + V_longrange
     return potential
+
+from functools import partial
+
+@partial(jax.vmap, in_axes=(0, None, None, None, None), out_axes=0)
+def potential_energy(x, kappa, G, L, rs):
+    """
+        Potential energy for a periodic box of size L, only the nontrivial
+    coordinate-dependent part. Unit: Ry/rs^2.
+        To account for the Madelung part `Vconst` returned by the function `Madelung`,
+    add the term n*rs/L*Vconst. See also the docstring for function `psi`.
+    """
+    return 2*rs/L * psi(x/L, kappa, G)

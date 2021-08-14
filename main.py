@@ -16,7 +16,7 @@ parser.add_argument("--Theta", type=float, default=0.05, help="dimensionless tem
 parser.add_argument("--Ecut", type=float, default=2.0, help="energy cutoff for the many-body slater determinants")
 
 parser.add_argument("--Gmax", type=int, default=15, help="k-space cutoff in the ewald summation of Coulomb potential")
-parser.add_argument("--kappa", type=float, default=8, help="screening parameter (in unit of 1/L) in Ewald summation")
+parser.add_argument("--kappa", type=float, default=10, help="screening parameter (in unit of 1/L) in Ewald summation")
 
 #mcmc parameters
 parser.add_argument("--mc_therm", type=int, default=10, help="thermal_steps")
@@ -81,8 +81,8 @@ print("Initialize relevant quantities for Ewald summation...")
 
 from potential import kpoints, Madelung
 G = kpoints(dim, args.Gmax)
-Vconst = Madelung(dim, args.kappa, G)
-print("Vconst:", Vconst)
+Vconst = n * args.rs/L * Madelung(dim, args.kappa, G)
+print("(scaled) Vconst:", Vconst/(n*args.rs/L))
 
 ####################################################################################
 
@@ -106,7 +106,7 @@ opt_state = optimizer.init((logits, params))
 loss_fn = make_loss(logp, args.mc_steps, logpsi,
           args.kappa, G, Vconst, L, args.rs, beta)
 
-for i in range(500):
+for i in range(200):
     grads, aux = jax.grad(loss_fn, argnums=(0, 1), has_aux=True)(logits, params, key, x)
     key, x = aux["key"], aux["x"]
     updates, opt_state = optimizer.update(grads, opt_state)
