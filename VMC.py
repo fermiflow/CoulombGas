@@ -69,43 +69,34 @@ def logpsi_grad_laplacian(x, params, state_idx, logpsi):
 
     return logpsix, grad, laplacian
 
-def MCMC_thermalize(key_init, batch, n, dim, L,
-                    sampler, params, logp, mc_steps, mc_therm):
-    x_init = jax.random.uniform(key_init, (batch, n, dim), minval=0., maxval=L)
-    key, x = key_init, x_init
-    for i in range(mc_therm):
-        print("---- thermal step %d ----" % (i+1))
-        key, _, x = sample_x(key, x, sampler, params, logp, mc_steps)
-    return key, x
+from softmax import sampler, log_prob
 
-def sample_x(key, x, sampler, params, logp, mc_steps):
+#@partial(jax.pmap, in_axes=(0, 0, 0, 0, None, None), static_broadcasted_argnums=4)
+def sample_x(key, x, logits, params, logp, mc_steps):
     """
-        Generate new coordinate sample `x` of shape (batch, n, dim) from the sample
-    of last optimization step.
+        Generate new state_indices as well as coordinate sample of shape (batch, n, dim)
+    from the sample of last optimization step.
     """
     key, key_state, key_MCMC = jax.random.split(key, 3)
     batch = x.shape[0]
-    state_indices = sampler(key_state, batch)
+    state_indices = sampler(logits, key_state, batch)
     x = mcmc(lambda x: logp(x, params, state_indices), x, key_MCMC, mc_steps)
     return key, state_indices, x
 
 from potential import potential_energy
-from state_sampler import make_softmax_sampler
 from MCMC import mcmc
 
 def make_loss(logp, mc_steps, logpsi,
               kappa, G, Vconst, L, rs, beta
              ):
 
-    @jax.jit
     def loss_fn(logits, params, key, x):
-        sampler, log_prob = make_softmax_sampler(logits)
-        key, state_indices, x = sample_x(key, x, sampler, params, logp, mc_steps)
+        key, state_indices, x = sample_x(key, x, logits, params, logp, mc_steps)
         print("Sampled state indices and electron coordinates.")
         state_indices = jax.lax.stop_gradient(state_indices)
         x = jax.lax.stop_gradient(x)
 
-        logp_states = log_prob(state_indices)
+        logp_states = log_prob(logits, state_indices)
 
         logpsix, grad, laplacian = logpsi_grad_laplacian(x, params, state_indices, logpsi)
         print("logpsix.shape:", logpsix.shape)
@@ -115,25 +106,28 @@ def make_loss(logp, mc_steps, logpsi,
         potential = potential_energy(x, kappa, G, L, rs) + Vconst
 
         Eloc = jax.lax.stop_gradient(kinetic + potential)
-        E = Eloc.mean()
-        E_std = Eloc.std()
+        E_mean = Eloc.real.mean()
+        E2_mean = (Eloc.real**2).mean()
 
-        S = -logp_states.mean()
-        S_std = (-logp_states).std()
-        logp_states_all = log_prob(jnp.arange(logits.shape[0]))
+        S_mean = -logp_states.mean()
+        S2_mean = (logp_states**2).mean()
+        logp_states_all = log_prob(logits, jnp.arange(logits.shape[0]))
         S_logits = - (jnp.exp(logp_states_all) * logp_states_all).sum()
 
         Floc = jax.lax.stop_gradient(logp_states / beta + Eloc.real)
-        F = Floc.mean()
-        F_std = Floc.std()
+        F_mean = Floc.mean()
+        F2_mean = (Floc**2).mean()
 
-        gradF_phi = (logp_states * (Floc - F)).mean()
-        gradF_theta = 2 * (logpsix * (Eloc - E).conj()).real.mean()
+        gradF_phi = (logp_states * (Floc - F_mean)).mean()
+        gradF_theta = 2 * (logpsix * (Eloc - E_mean).conj()).real.mean()
 
-        auxiliary_data = {"E": E, "E_std": E_std,
-                          "F": F, "F_std": F_std,
-                          "S": S, "S_std": S_std, "S_logits": S_logits,
-                          "key": key, "x": x,
+        auxiliary_data = {"statistics":
+                            {"E_mean": E_mean, "E2_mean": E2_mean,
+                             "F_mean": F_mean, "F2_mean": F2_mean,
+                             "S_mean": S_mean, "S2_mean": S2_mean},
+                          "S_logits": S_logits,
+                          "key": key,
+                          "x": x,
                          }
 
         return gradF_phi + gradF_theta, auxiliary_data

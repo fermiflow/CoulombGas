@@ -80,13 +80,23 @@ def test_jit3():
         f(x2)
         print(i+1, "time to take (ms):", 1000 * (time.time() - start))
 
-@jax.partial(jax.jit, static_argnums=(1,))
-def f(x, neg):
-    print("In function f...")
-    print("x:", x)
-    y = x[:50] if neg else x
-    print("y:", y)
-    return jnp.dot(y, y)
+def test_jit_foriloop():
+    @jax.jit
+    def sum1(n):
+        val = 0
+        for i in range(n): val += i
+        return val
+    @jax.jit
+    def sum2(n):
+        body_fun = lambda i, val: val + i
+        return jax.lax.fori_loop(0, n, body_fun, 0)
+
+    n = 10
+    try:
+        print("sum1(%d):" % n, sum1(n))     # sum1(n) will fail!
+    except Exception as e:
+        print("Exception message:\n{}".format(e))
+    print("sum2(%d):" % n, sum2(n))     # sum2(n) using jax.lax.fori_loop is OK!!!
 
 ####################################################################################
 

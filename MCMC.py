@@ -4,7 +4,10 @@ config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 from jax import lax
 
-def mcmc(logp_fn, x_init, key, nsteps, stddev=0.02):
+from functools import partial
+
+@partial(jax.jit, static_argnums=0)
+def mcmc(logp_fn, x_init, key, mc_steps, stddev=0.02):
     """
         Markov Chain Monte Carlo sampling algorithm.
 
@@ -13,7 +16,7 @@ def mcmc(logp_fn, x_init, key, nsteps, stddev=0.02):
             The signature is logp_fn(x), where x has shape (batch, n, dim).
         x_init: initial value of x, with shape (batch, n, dim).
         key: initial PRNG key.
-        nsteps: total number of Monte Carlo steps.
+        mc_steps: total number of Monte Carlo steps.
         stddev: standard deviation of the Gaussian proposal.
 
     OUTPUT:
@@ -33,7 +36,7 @@ def mcmc(logp_fn, x_init, key, nsteps, stddev=0.02):
         return x_new, logp_new, key
     
     logp_init = logp_fn(x_init)
-    x, logp, key = lax.fori_loop(0, nsteps, step, (x_init, logp_init, key))
+    x, logp, key = lax.fori_loop(0, mc_steps, step, (x_init, logp_init, key))
     return x
 
 if __name__ == "__main__":
@@ -75,7 +78,7 @@ if __name__ == "__main__":
     print("logpx_init:", logpx_init)
     print("logpx_init.shape:", logpx_init.shape)
 
-    nsteps = 1000
-    x_sample = mcmc(lambda x: batch_logp(x, params, state_idx), x_init, key, nsteps)
+    mc_steps = 1000
+    x_sample = mcmc(lambda x: batch_logp(x, params, state_idx), x_init, key, mc_steps)
     print("x_sample:", x_sample)
     print("x_sample.shape:", x_sample.shape)

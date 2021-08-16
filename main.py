@@ -48,6 +48,9 @@ elif dim == 2:
     beta = 1/ (4 * args.Theta)
 print("n = %d, dim = %d, L = %f" % (n, dim, L))
 
+beta = 1.0
+print("beta = %f" % beta)
+
 ####################################################################################
 
 print("Initialize many-body state distribution...")
@@ -86,35 +89,79 @@ print("(scaled) Vconst:", Vconst/(n*args.rs/L))
 
 ####################################################################################
 
-print("Generate initial key and coordinate sample...")
-
-from state_sampler import make_softmax_sampler
-from VMC import MCMC_thermalize
-sampler, _ = make_softmax_sampler(logits)
-key, x = MCMC_thermalize(key, args.batch, n, dim, L,
-                         sampler, params, logp, args.mc_steps, args.mc_therm)
-
-####################################################################################
-
-from VMC import make_loss
+print("Initialize optimizer...")
 import optax
+from utils import shard, replicate
+
+num_devices = jax.device_count()
 
 lr = 1e-2
 optimizer = optax.adam(lr)
 opt_state = optimizer.init((logits, params))
+opt_state = replicate(opt_state, num_devices)
 
+####################################################################################
+
+print("Generate initial key and coordinate sample...")
+
+print("Number of GPU devices:", num_devices)
+if args.batch % num_devices != 0:
+    raise ValueError("Batch size must be divisible by the number of GPU devices. "
+                     "Got batch = %d for %d devices now." % (args.batch, num_devices))
+batch_per_device = args.batch // num_devices
+
+x = jax.random.uniform(key, (num_devices, batch_per_device, n, dim), minval=0., maxval=L)
+keys = jax.random.split(key, num_devices)
+
+x, keys = shard(x), shard(keys)
+logits, params = replicate((logits, params), num_devices)
+print("keys:", keys, "\nshape:", keys.shape, "\t\ttype:", type(keys))
+print("x:", x, "\nshape:", x.shape, "\t\ttype:", type(x))
+
+from VMC import sample_x
+pmap_sample_x = jax.pmap(sample_x, in_axes=(0, 0, 0, 0, None, None),
+                                   static_broadcasted_argnums=4)
+for i in range(args.mc_therm):
+    print("---- thermal step %d ----" % (i+1))
+    keys, _, x = pmap_sample_x(keys, x, logits, params, logp, args.mc_steps)
+print("keys:", keys, "\nshape:", keys.shape, "\t\ttype:", type(keys))
+print("x:", x, "\nshape:", x.shape, "\t\ttype:", type(x))
+
+####################################################################################
+
+from VMC import make_loss
 loss_fn = make_loss(logp, args.mc_steps, logpsi,
           args.kappa, G, Vconst, L, args.rs, beta)
 
-for i in range(200):
+from functools import partial
+
+@partial(jax.pmap, axis_name="p")
+def update(logits, params, opt_state, key, x):
     grads, aux = jax.grad(loss_fn, argnums=(0, 1), has_aux=True)(logits, params, key, x)
-    key, x = aux["key"], aux["x"]
+    grads = jax.lax.pmean(grads, axis_name="p")
     updates, opt_state = optimizer.update(grads, opt_state)
     logits, params = optax.apply_updates((logits, params), updates)
 
-    E, E_std, F, F_std, S, S_std, S_logits = \
-            aux["E"], aux["E_std"], aux["F"], aux["F_std"], \
-            aux["S"], aux["S_std"], aux["S_logits"]
+    statistics = jax.lax.pmean(aux["statistics"], axis_name="p")
+    key, x = aux["key"], aux["x"]
+    S_logits = aux["S_logits"]
+
+    auxiliary_data = {"statistics": statistics,
+                      "S_logits": S_logits,
+                     }
+    return logits, params, opt_state, key, x, auxiliary_data
+
+for i in range(2000):
+    logits, params, opt_state, keys, x, aux = update(logits, params, opt_state, keys, x)
+    aux = jax.tree_map(lambda x: x[0], aux)
+    E, E2_mean, F, F2_mean, S, S2_mean = \
+            aux["statistics"]["E_mean"], aux["statistics"]["E2_mean"], \
+            aux["statistics"]["F_mean"], aux["statistics"]["F2_mean"], \
+            aux["statistics"]["S_mean"], aux["statistics"]["S2_mean"]
+    E_std = jnp.sqrt(E2_mean - E**2)
+    F_std = jnp.sqrt(F2_mean - F**2)
+    S_std = jnp.sqrt(S2_mean - S**2)
+    S_logits = aux["S_logits"]
     print("iter: %04d" % i,
             "F:", F, "F_std:", F_std, 
             "E:", E, "E_std:", E_std, 
