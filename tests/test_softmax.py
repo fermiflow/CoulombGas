@@ -3,25 +3,24 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from state_sampler import make_softmax_sampler
+from softmax import sampler, log_prob
 import numpy as np
 
 def test_softmax():
     N = 10
     logits = jnp.array( np.random.randn(N) )
-    sampler, log_prob = make_softmax_sampler(logits)
 
-    p_full = jnp.exp(log_prob(jnp.arange(N)))
+    p_full = jnp.exp(log_prob(logits, jnp.arange(N)))
     assert jnp.allclose(p_full, jnp.exp(logits) / jnp.exp(logits).sum())
     assert jnp.allclose(p_full.sum(), 1.)
 
     key = jax.random.PRNGKey(42)
     batch = 100
-    sample = sampler(key, batch)
+    sample = sampler(logits, key, batch)
 
-    print("logp_full:", log_prob(jnp.arange(N)))
+    print("logp_full:", log_prob(logits, jnp.arange(N)))
     print("sample:", sample)
-    print("logp:", log_prob(sample))
+    print("logp:", log_prob(logits, sample))
 
 def test_softmax_AD():
     """
@@ -35,17 +34,14 @@ def test_softmax_AD():
 
     # put logits -> sample inside the function.
     def fun1(logits):
-        sampler, log_prob = make_softmax_sampler(logits)
-        sample = sampler(key, batch)
-        return log_prob(sample).sum()
+        sample = sampler(logits, key, batch)
+        return log_prob(logits, sample).sum()
     grad1 = jax.grad(fun1)(logits)
     print("grad1:", grad1)
 
     # put logits -> sample outside the function.
-    sample = jax.random.categorical(key, logits, shape=(batch,))
-    def fun2(logits):
-        logp_full = logits - jax.scipy.special.logsumexp(logits)
-        return logp_full[sample].sum()
+    sample = sampler(logits, key, batch)
+    fun2 = lambda logits: log_prob(logits, sample).sum()
     grad2 = jax.grad(fun2)(logits)
     print("grad2:", grad2)
 

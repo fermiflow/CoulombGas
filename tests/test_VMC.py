@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 import numpy as np
 import haiku as hk
-from VMC import make_logpsi_logp, logpsi_grad_laplacian
+from VMC import make_logpsi_logp
 
 def test_kinetic_energy():
     """
@@ -28,10 +28,13 @@ def test_kinetic_energy():
     print("indices:\n", indices)
     fake_manybody_indices = jnp.array(indices)[None, ...]
 
-    logpsi, logp = make_logpsi_logp(identity, fake_manybody_indices, L)
-    logpsix, grad, laplacian = logpsi_grad_laplacian(x[None, ...], params, jnp.array([0]), logpsi)
-    kinetic = -laplacian - (grad**2).sum(axis=(-2, -1))
+    logpsi_grad_laplacian, _ = make_logpsi_logp(identity, fake_manybody_indices, L)
+    logpsi, grad, laplacian = logpsi_grad_laplacian(x[None, ...], params, jnp.array([0]))
+    assert logpsi.shape == (1,)
+    assert grad.shape == (1, n, dim)
+    assert laplacian.shape == (1,)
 
+    kinetic = -laplacian - (grad**2).sum(axis=(-2, -1))
     print("kinetic energy:", kinetic)
     kinetic_analytic = (2*jnp.pi/L)**2 * (indices**2).sum()
     print("analytic result:", kinetic_analytic)
