@@ -3,7 +3,7 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-key = jax.random.PRNGKey(42)
+key = jax.random.PRNGKey(1)
 
 import argparse
 parser = argparse.ArgumentParser(description="Finite-temperature VMC for homogeneous electron gas")
@@ -30,6 +30,7 @@ parser.add_argument("--batch", type=int, default=1024, help="batch size")
 #parser.add_argument("--max_norm", type=float, default=1e-3, help="gradnorm")
 #parser.add_argument("--use_sparse_solver", action='store_true',  help="")
 parser.add_argument("--epochs", type=int, default=10000, help="epochs")
+parser.add_argument("--lr", type=float, default=1e-3, help="learning rate")
 
 #model parameters
 #parser.add_argument("--steps", type=int, default=2, help="FermiNet: steps")
@@ -108,11 +109,11 @@ print("keys:", keys, "\nshape:", keys.shape, "\t\ttype:", type(keys))
 print("x:", x, "\nshape:", x.shape, "\t\ttype:", type(x))
 
 from VMC import sample_stateindices_and_x
-pmap_sample_x = jax.pmap(sample_stateindices_and_x, in_axes=(0, 0, None, 0, 0, None, None),
+pmap_sample_x = jax.pmap(sample_stateindices_and_x, in_axes=(0, 0, None, 0, 0, None, None, None),
                                    static_broadcasted_argnums=2)
 for i in range(args.mc_therm):
     print("---- thermal step %d ----" % (i+1))
-    keys, _, x = pmap_sample_x(keys, logits, logp, x, params, args.mc_steps, args.mc_stddev)
+    keys, _, x = pmap_sample_x(keys, logits, logp, x, params, args.mc_steps, args.mc_stddev, L)
 print("keys:", keys, "\nshape:", keys.shape, "\t\ttype:", type(keys))
 print("x:", x, "\nshape:", x.shape, "\t\ttype:", type(x))
 
@@ -121,8 +122,7 @@ print("x:", x, "\nshape:", x.shape, "\t\ttype:", type(x))
 print("Initialize optimizer...")
 import optax
 
-lr = 1e-2
-optimizer = optax.adam(lr)
+optimizer = optax.adam(args.lr)
 opt_state = optimizer.init((origin_logits, origin_params))
 opt_state = replicate(opt_state, num_devices)
 
