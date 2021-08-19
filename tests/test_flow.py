@@ -12,7 +12,7 @@ def generic_test_flow(model, L):
     """
     n, dim = 7, 3
     key = jax.random.PRNGKey(42)
-    x = jnp.array( np.random.randn(n, dim) )
+    x = jnp.array( np.random.uniform(0., L, (n, dim)) )
     params = model.init(key, x)
     z = model.apply(params, None, x)
 

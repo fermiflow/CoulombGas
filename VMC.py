@@ -78,7 +78,7 @@ from MCMC import mcmc
 
 #@partial(jax.pmap, in_axes=(0, 0, 0, 0, None, None), static_broadcasted_argnums=4)
 def sample_stateindices_and_x(key, logits,
-                              logp, x, params, mc_steps, mc_stddev):
+                              logp, x, params, mc_steps, mc_stddev, L):
     """
         Generate new state_indices of shape (batch,), as well as coordinate sample
     of shape (batch, n, dim), from the sample of last optimization step.
@@ -87,6 +87,7 @@ def sample_stateindices_and_x(key, logits,
     batch = x.shape[0]
     state_indices = sampler(logits, key_state, batch)
     x = mcmc(lambda x: logp(x, params, state_indices), x, key_MCMC, mc_steps, mc_stddev)
+    x -= L * jnp.floor(x/L)
     return key, state_indices, x
 
 ####################################################################################
@@ -101,7 +102,7 @@ def make_loss(logp, mc_steps, mc_stddev,
 
     def loss_fn(logits, params, key, x):
         key, state_indices, x = sample_stateindices_and_x(key, logits,
-                                        logp, x, params, mc_steps, mc_stddev)
+                                        logp, x, params, mc_steps, mc_stddev, L)
         print("Sampled state indices and electron coordinates.")
         x = jax.lax.stop_gradient(x)
 
