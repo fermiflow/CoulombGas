@@ -3,7 +3,7 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-key = jax.random.PRNGKey(1)
+key = jax.random.PRNGKey(42)
 
 import argparse
 parser = argparse.ArgumentParser(description="Finite-temperature VMC for homogeneous electron gas")
@@ -176,11 +176,17 @@ def update(logits, params, opt_state, key, x):
     logits, params = optax.apply_updates((logits, params), updates)
 
     key, x = aux["key"], aux["x"]
+    logpsi, Eloc_real = aux["logpsi"], aux["Eloc_real"]
     auxiliary_data = aux["statistics"]
-    return logits, params, opt_state, key, x, auxiliary_data
+    return logits, params, opt_state, key, x, auxiliary_data, logpsi, Eloc_real
+
+log_filename = os.path.join(path, "data.txt")
+f = open(log_filename, "w" if args.epoch_finished == 0 else "a",
+            buffering=1, newline="\n")
 
 for i in range(args.epoch_finished + 1, args.epoch + 1):
-    logits, params, opt_state, keys, x, aux = update(logits, params, opt_state, keys, x)
+    logits, params, opt_state, keys, x, aux, logpsi, Eloc_real \
+        = update(logits, params, opt_state, keys, x)
 
     aux = jax.tree_map(lambda x: x[0], aux)
     K, K2_mean, V, V2_mean, E, E2_mean, F, F2_mean, S, S2_mean, S_logits = \
@@ -192,14 +198,21 @@ for i in range(args.epoch_finished + 1, args.epoch + 1):
     E_std = jnp.sqrt((E2_mean - E**2) / args.batch)
     F_std = jnp.sqrt((F2_mean - F**2) / args.batch)
     S_std = jnp.sqrt((S2_mean - S**2) / args.batch)
-    print("iter: %04d" % i,
-            "F:", F, "F_std:", F_std, 
-            "E:", E, "E_std:", E_std, 
-            "K:", K, "K_std:", K_std, 
-            "V:", V, "V_std:", V_std, 
-            "S:", S, "S_std:", S_std, "S_logits:", S_logits)
 
-    if i % 50 == 0:
+    # Note the quantities with energy dimension obtained above are in units of Ry/rs^2.
+    print("iter: %04d" % i,
+            "F:", F/args.rs**2, "F_std:", F_std/args.rs**2,
+            "E:", E/args.rs**2, "E_std:", E_std/args.rs**2,
+            "K:", K/args.rs**2, "K_std:", K_std/args.rs**2,
+            "V:", V/args.rs**2, "V_std:", V_std/args.rs**2,
+            "S:", S, "S_std:", S_std, "S_logits:", S_logits)
+    f.write( ("%6d" + "  %.6f"*11 + "\n") % (i, F/args.rs**2, F_std/args.rs**2,
+                                                E/args.rs**2, E_std/args.rs**2,
+                                                K/args.rs**2, K_std/args.rs**2,
+                                                V/args.rs**2, V_std/args.rs**2,
+                                                S, S_std, S_logits) )
+
+    if i % 100 == 0:
         ckpt = {"keys": keys, "x": x,
                 "logits": jax.tree_map(lambda x: x[0], logits),
                 "params": jax.tree_map(lambda x: x[0], params),
@@ -208,3 +221,16 @@ for i in range(args.epoch_finished + 1, args.epoch + 1):
         save_ckpt_filename = checkpoint.ckpt_filename(i, path)
         checkpoint.save_checkpoint(ckpt, save_ckpt_filename)
         print("Save checkpoint file: %s" % save_ckpt_filename)
+
+    """
+    logpsi_real = logpsi.real.reshape(-1)
+    Eloc_real = Eloc_real.reshape(-1)
+    print("Eloc_real max: (%f, %d)" % (Eloc_real.max(), Eloc_real.argmax()),
+          "min: (%f, %d)" % (Eloc_real.min(), Eloc_real.argmin()),
+          "mean:", Eloc_real.mean(), "std:", Eloc_real.std())
+    print("logpsi_real max: (%f, %d)" % (logpsi_real.max(), logpsi_real.argmax()),
+          "min: (%f, %d)" % (logpsi_real.min(), logpsi_real.argmin()),
+          "mean:", logpsi_real.mean(), "std:", logpsi_real.std())
+    """
+
+f.close()

@@ -131,8 +131,13 @@ def make_loss(logp, mc_steps, mc_stddev,
         logp_states_all = log_prob(logits, jnp.arange(logits.shape[0]))
         S_logits = - (jnp.exp(logp_states_all) * logp_states_all).sum()
 
-        gradF_phi = (logp_states * (Floc - F_mean)).mean()
-        gradF_theta = 2 * (logpsi * (Eloc - E_mean).conj()).real.mean()
+        tv = jax.lax.pmean(jnp.abs(Floc - F_mean).mean(), axis_name="p")
+        Floc_clipped = jnp.clip(Floc, F_mean - 5.0*tv, F_mean + 5.0*tv)
+        gradF_phi = (logp_states * (Floc_clipped - F_mean)).mean()
+
+        tv = jax.lax.pmean(jnp.abs(Eloc - E_mean).mean(), axis_name="p")
+        Eloc_clipped = jnp.clip(Eloc, E_mean - 5.0*tv, E_mean + 5.0*tv)
+        gradF_theta = 2 * (logpsi * (Eloc_clipped - E_mean).conj()).real.mean()
 
         auxiliary_data = {"statistics":
                             {"K_mean": K_mean, "K2_mean": K2_mean,
@@ -142,6 +147,8 @@ def make_loss(logp, mc_steps, mc_stddev,
                              "S_mean": S_mean, "S2_mean": S2_mean,
                              "S_logits": S_logits},
                           "key": key, "x": x,
+                          "logpsi": logpsi,
+                          "Eloc_real": Eloc.real,
                          }
 
         return gradF_phi + gradF_theta, auxiliary_data
