@@ -109,3 +109,9 @@ if __name__ == "__main__":
     for Ecut in range(9):
         _, manybody_Es = manybody_orbitals(n, dim, Ecut)
         print("Ecut = %d: number of many-body states = %6d" % (Ecut, manybody_Es.size))
+
+    n, dim = 25, 2
+    print("---- %d (spinless) electrons in dim = %d ----" % (n, dim))
+    for Ecut in range(9):
+        _, manybody_Es = manybody_orbitals(n, dim, Ecut)
+        print("Ecut = %d: number of many-body states = %6d" % (Ecut, manybody_Es.size))

@@ -34,7 +34,7 @@ def make_logpsi(flow, manybody_indices, L):
 
     return logpsi
 
-def make_logpsi_grad_laplacian(logpsi):
+def make_logpsi_grad_laplacian(logpsi, key=None):
 
     @partial(jax.vmap, in_axes=(0, None, 0), out_axes=0)
     def logpsi_grad_laplacian(x, params, state_idx):
@@ -75,7 +75,42 @@ def make_logpsi_grad_laplacian(logpsi):
 
         return logpsix, grad, laplacian
 
-    return logpsi_grad_laplacian
+    def logpsi_grad_laplacian_hutchinson(x, params, state_indices):
+
+        v = jax.random.normal(key, x.shape)
+
+        @partial(jax.vmap, in_axes=(0, None, 0, 0), out_axes=0)
+        def logpsi_grad_random_laplacian(x, params, state_idx, v):
+            """
+                Compute the laplacian as a random variable `v^T hessian(ln Psi_n(x)) v`
+            using the Hutchinson's trick.
+
+                The argument `v` is a random "vector" that has the same shape as `x`,
+            i.e., (after vmapped) (batch, n, dim).
+            """
+
+            logpsix = logpsi(x, params, state_idx)
+            logpsix = logpsix[0] + 1j * logpsix[1]
+            print("Computed logpsi.")
+
+            grad, hvp = jax.jvp( jax.jacrev(lambda x: logpsi(x, params, state_idx)),
+                                 (x,), (v,) )
+
+            grad = grad[0] + 1j * grad[1]
+            print("Computed gradient.")
+
+            random_laplacian = (hvp * v).sum(axis=(-2, -1))
+            random_laplacian = random_laplacian[0] + 1j * random_laplacian[1]
+            print("Computed laplacian.")
+
+            return logpsix, grad, random_laplacian
+
+        return logpsi_grad_random_laplacian(x, params, state_indices, v)
+
+    if key is not None:
+        return logpsi_grad_laplacian_hutchinson
+    else:
+        return logpsi_grad_laplacian
 
 def make_logp(logpsi):
 
