@@ -2,6 +2,7 @@ import jax
 from jax.config import config
 config.update("jax_enable_x64", True)
 import jax.numpy as jnp
+from jax.flatten_util import ravel_pytree
 
 key = jax.random.PRNGKey(42)
 
@@ -34,14 +35,17 @@ parser.add_argument("--mc_therm", type=int, default=10, help="MCMC thermalizatio
 parser.add_argument("--mc_steps", type=int, default=50, help="MCMC update steps")
 parser.add_argument("--mc_stddev", type=float, default=0.1, help="standard deviation of the Gaussian proposal in MCMC update")
 
+# optimizer parameters.
+parser.add_argument("--lr", type=float, default=1e-3, help="learning rate (valid only for adam)")
+parser.add_argument("--sr", action='store_true',  help="use the second-order stochastic reconfiguration optimizer")
+parser.add_argument("--damping", type=float, default=1e-3, help="damping")
+parser.add_argument("--max_norm", type=float, default=1e-3, help="gradnorm maximum")
+#parser.add_argument("--use_sparse_solver", action='store_true',  help="")
+
 # training parameters.
 parser.add_argument("--batch", type=int, default=1024, help="batch size")
 parser.add_argument("--num_devices", type=int, default=8, help="number of GPU devices")
 #parser.add_argument("--k_steps", type=int, default=1, help="accumulation steps")
-#parser.add_argument("--damping", type=float, default=1e-3, help="damping")
-#parser.add_argument("--max_norm", type=float, default=1e-3, help="gradnorm")
-#parser.add_argument("--use_sparse_solver", action='store_true',  help="")
-parser.add_argument("--lr", type=float, default=1e-3, help="learning rate")
 parser.add_argument("--epoch_finished", type=int, default=0, help="number of epochs already finished")
 parser.add_argument("--epoch", type=int, default=10000, help="final epoch")
 
@@ -68,6 +72,7 @@ logits = - beta * manybody_Es * (2*jnp.pi/L)**2
 logits -= jax.scipy.special.logsumexp(logits)
 print("beta = %f, Ecut = %f, corresponding delta_logit = %f"
         % (beta, args.Ecut, beta * (2*jnp.pi/L)**2 * args.Ecut))
+print("Total number of many-body states: %d" % logits.size)
 
 ####################################################################################
 
@@ -82,8 +87,12 @@ flow = hk.transform(flow_fn)
 x_dummy = jax.random.uniform(key, (n, dim), minval=0., maxval=L)
 params = flow.init(key, x_dummy)
 
-from VMC import make_logpsi_logp
-logpsi_grad_laplacian, logp = make_logpsi_logp(flow, manybody_indices, L)
+raveled_params, _ = ravel_pytree(params)
+print("Total number of parameters in the flow model: %d" % raveled_params.size)
+
+from logpsi import make_logpsi, make_logpsi_grad_laplacian, make_logp, make_quantum_score
+logpsi = make_logpsi(flow, manybody_indices, L)
+logp = make_logp(logpsi)
 
 ####################################################################################
 
@@ -99,7 +108,17 @@ print("(scaled) Vconst:", Vconst/(n*args.rs/L))
 print("Initialize optimizer...")
 
 import optax
-optimizer = optax.adam(args.lr)
+if args.sr:
+    from sr import hybrid_fisher_sr
+    from softmax import classical_score_fn
+    quantum_score_fn = make_quantum_score(logpsi)
+    optimizer = hybrid_fisher_sr(classical_score_fn, quantum_score_fn,
+            args.damping, args.max_norm)
+    print("Optimizer hybrid_fisher_sr: damping = %.5f, max_norm = %.5f." %
+            (args.damping, args.max_norm))
+else:
+    optimizer = optax.adam(args.lr)
+    print("Optimizer adam: lr = %.3f." % args.lr)
 
 ####################################################################################
 
@@ -112,13 +131,18 @@ path = args.folder + "n_%d_dim_%d_rs_%f_Theta_%f" % (n, dim, args.rs, args.Theta
                    + "_depth_%d_spsize_%d_tpsize_%d" % (args.depth, args.spsize, args.tpsize) \
                    + "_Gmax_%d_kappa_%d" % (args.Gmax, args.kappa) \
                    + "_mctherm_%d_mcsteps_%d_mcstddev_%.2f" % (args.mc_therm, args.mc_steps, args.mc_stddev) \
-                   + "_batch_%d_ndevices_%d_lr_%.3f" % (args.batch, args.num_devices, args.lr)
+                   + ("_damping_%.5f_maxnorm_%.5f" % (args.damping, args.max_norm)
+                        if args.sr else "_lr_%.3f" % args.lr) \
+                   + "_batch_%d_ndevices_%d" % (args.batch, args.num_devices)
 if not os.path.isdir(path):
     os.makedirs(path)
     print("Create directory: %s" % path)
 load_ckpt_filename = checkpoint.ckpt_filename(args.epoch_finished, path)
 
 num_devices = args.num_devices
+print("Number of GPU devices:", num_devices)
+if num_devices != jax.device_count():
+    raise ValueError("Expected %d GPU devices. Got %d." % (num_devices, jax.device_count()))
 
 if os.path.isfile(load_ckpt_filename):
     print("Load checkpoint file: %s" % load_ckpt_filename)
@@ -127,23 +151,17 @@ if os.path.isfile(load_ckpt_filename):
         ckpt["keys"], ckpt["x"], ckpt["logits"], ckpt["params"], ckpt["opt_state"]
     x, keys = shard(x), shard(keys)
     logits, params = replicate((logits, params), num_devices)
-    opt_state = replicate(opt_state, num_devices)
 else:
     print("No checkpoint file found. Start from scratch.")
-    print("Number of GPU devices:", num_devices)
-    if num_devices != jax.device_count():
-        raise ValueError("Expected %d GPU devices. Got %d." % (num_devices, jax.device_count()))
+
+    opt_state = optimizer.init((logits, params))
+
+    print("Initialize key and coordinate samples...")
+
     if args.batch % num_devices != 0:
         raise ValueError("Batch size must be divisible by the number of GPU devices. "
                          "Got batch = %d for %d devices now." % (args.batch, num_devices))
     batch_per_device = args.batch // num_devices
-
-
-    opt_state = optimizer.init((logits, params))
-    opt_state = replicate(opt_state, num_devices)
-
-
-    print("Initialize key and coordinate samples...")
 
     x = jax.random.uniform(key, (num_devices, batch_per_device, n, dim), minval=0., maxval=L)
     keys = jax.random.split(key, num_devices)
@@ -161,21 +179,29 @@ else:
 
 ####################################################################################
 
+logpsi_grad_laplacian = make_logpsi_grad_laplacian(logpsi)
+
 from VMC import make_loss
-loss_fn = make_loss(logp, args.mc_steps, args.mc_stddev,
-                    logpsi_grad_laplacian,
-                    args.kappa, G, L, args.rs, Vconst, beta)
+loss_fn = make_loss(logpsi_grad_laplacian, args.kappa, G, L, args.rs, Vconst, beta)
 
 from functools import partial
 
-@partial(jax.pmap, axis_name="p")
+@partial(jax.pmap, axis_name="p",
+        in_axes=(0, 0, None, 0, 0),
+        out_axes=(0, 0, None, 0, 0, 0, 0, 0))
 def update(logits, params, opt_state, key, x):
-    grads, aux = jax.grad(loss_fn, argnums=(0, 1), has_aux=True)(logits, params, key, x)
+
+    key, state_indices, x = sample_stateindices_and_x(key, logits,
+                                    logp, x, params, args.mc_steps, args.mc_stddev, L)
+    print("Sampled state indices and electron coordinates.")
+
+    grads, aux = jax.grad(loss_fn, argnums=(0, 1), has_aux=True)(logits, params, state_indices, x)
     grads = jax.lax.pmean(grads, axis_name="p")
-    updates, opt_state = optimizer.update(grads, opt_state)
+
+    updates, opt_state = optimizer.update(grads, opt_state,
+                            params=(logits, params, state_indices, x) if args.sr else None)
     logits, params = optax.apply_updates((logits, params), updates)
 
-    key, x = aux["key"], aux["x"]
     logpsi, Eloc_real = aux["logpsi"], aux["Eloc_real"]
     auxiliary_data = aux["statistics"]
     return logits, params, opt_state, key, x, auxiliary_data, logpsi, Eloc_real
@@ -216,7 +242,7 @@ for i in range(args.epoch_finished + 1, args.epoch + 1):
         ckpt = {"keys": keys, "x": x,
                 "logits": jax.tree_map(lambda x: x[0], logits),
                 "params": jax.tree_map(lambda x: x[0], params),
-                "opt_state": jax.tree_map(lambda x: x[0], opt_state)
+                "opt_state": opt_state
                }
         save_ckpt_filename = checkpoint.ckpt_filename(i, path)
         checkpoint.save_checkpoint(ckpt, save_ckpt_filename)

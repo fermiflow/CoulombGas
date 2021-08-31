@@ -3,7 +3,7 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from softmax import sampler, log_prob
+from softmax import sampler, log_prob, classical_score_fn
 import numpy as np
 
 def test_softmax():
@@ -52,3 +52,25 @@ def test_softmax_AD():
 
     assert jnp.allclose(grad1, grad2)
     assert jnp.allclose(grad1, grad_analytic)
+
+def test_softmax_score():
+    """ Compare the score function of softmax with analytic results. """
+    N = 10
+    logits = jnp.array( np.random.randn(N) )
+    key = jax.random.PRNGKey(42)
+    batch = 100
+    sample = sampler(logits, key, batch)
+
+    score = classical_score_fn(logits, sample)
+    
+    from functools import partial
+
+    @partial(jax.vmap, in_axes=(None, 0), out_axes=0)
+    def classical_score_fn_analytic(logits, sample):
+        N = logits.shape[0]
+        p_full = jnp.exp(log_prob(logits, jnp.arange(N)))
+        return jax.ops.index_add(-p_full, sample, 1)
+
+    score_analytic = classical_score_fn_analytic(logits, sample)
+
+    assert jnp.allclose(score, score_analytic)
