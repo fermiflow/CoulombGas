@@ -51,7 +51,7 @@ def make_autoregressive_sampler(network, n, num_states, mask_fn=False):
         return logp
 
     if mask_fn:
-        # return the function `_mask` only for test and illustration purpose.
+        # Return the function `_mask` only for test and illustration purpose.
         return _mask, sampler, log_prob
     else:
         return sampler, log_prob
@@ -73,6 +73,6 @@ if __name__ == "__main__":
      3  0   0   0   0   0   *   *   *   *   0   3hat(1, 2)
      4  0   0   0   0   0   0   *   *   *   *   4hat(1, 2, 3)
 
-     The symbols "*" and "0" stand for allowed and prohibited states, respectively.
+        The symbols "*" and "0" stand for allowed and prohibited states, respectively.
     """
     print("mask:\n", mask)

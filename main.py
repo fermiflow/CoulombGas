@@ -17,8 +17,12 @@ parser.add_argument("--dim", type=int, default=2, help="spatial dimension")
 parser.add_argument("--rs", type=float, default=1.0, help="rs")
 parser.add_argument("--Theta", type=float, default=0.05, help="dimensionless temperature T/Ef")
 
-# many-body state distribution: softmax.
-parser.add_argument("--Ecut", type=float, default=2.0, help="energy cutoff for the many-body slater determinants")
+# many-body state distribution: autoregressive transformer.
+parser.add_argument("--Emax", type=int, default=25, help="energy cutoff for the single-particle orbitals")
+parser.add_argument("--nlayers", type=int, default=2, help="number of layers")
+parser.add_argument("--modelsize", type=int, default=32, help="model size")
+parser.add_argument("--nheads", type=int, default=4, help="number of heads")
+parser.add_argument("--nhidden", type=int, default=48, help="number of hidden dimension of the MLP within transformer layers")
 
 # normalizing flow.
 #parser.add_argument("--steps", type=int, default=2, help="FermiNet: steps")
@@ -62,33 +66,68 @@ print("n = %d, dim = %d, L = %f" % (n, dim, L))
 
 ####################################################################################
 
-print("Initialize many-body state distribution...")
+print("========== Initialize single-particle orbitals ==========")
+
+from orbitals import sp_orbitals
+indices, Es = sp_orbitals(dim)
+indices, Es = jnp.array(indices), jnp.array(Es)
+Ef = Es[n-1]
+print("beta = %f, Ef = %d, Emax = %d, corresponding delta_logit = %f"
+        % (beta, Ef, args.Emax, beta * (2*jnp.pi/L)**2 * (args.Emax - Ef)))
+
+indices, Es = indices[Es<=args.Emax], Es[Es<=args.Emax]
+num_states = Es.size
+print("Number of available single-particle orbitals: %d" % num_states)
+from scipy.special import comb
+print("Total number of many-body states (%d in %d): %f" % (n, num_states, comb(num_states, n)))
 
 from orbitals import manybody_orbitals
-manybody_indices, manybody_Es = manybody_orbitals(n, dim, args.Ecut)
+manybody_indices, manybody_Es = manybody_orbitals(n, dim, 8)
 manybody_indices, manybody_Es = jnp.array(manybody_indices), jnp.array(manybody_Es)
 print("manybody_indices.shape:", manybody_indices.shape)
 logits = - beta * manybody_Es * (2*jnp.pi/L)**2
 logits -= jax.scipy.special.logsumexp(logits)
-print("beta = %f, Ecut = %f, corresponding delta_logit = %f"
-        % (beta, args.Ecut, beta * (2*jnp.pi/L)**2 * args.Ecut))
-print("Total number of many-body states: %d" % logits.size)
+
+E = (manybody_Es * (2*jnp.pi/L)**2 * jnp.exp(logits)).sum()
+S = -(logits * jnp.exp(logits)).sum()
+F = E - S / beta
+print("F:", F, "\tE:", E, "\tS:", S)
 
 ####################################################################################
 
-print("Initialize normalizing flow...")
+print("========== Initialize many-body state distribution ==========")
 
 import haiku as hk
+from autoregressive import Transformer
+def forward_fn(state_idx):
+    model = Transformer(num_states, args.nlayers, args.modelsize, args.nheads, args.nhidden)
+    return model(state_idx[..., None])
+van = hk.transform(forward_fn)
+state_idx_dummy = jnp.arange(n, dtype=jnp.float64)
+params_van = van.init(key, state_idx_dummy)
+
+raveled_params_van, _ = ravel_pytree(params_van)
+print("#parameters in the autoregressive model: %d" % raveled_params_van.size)
+
+from freefermion import pretrain
+params_van = pretrain(van, params_van, (2*jnp.pi/L)**2 * Es[::-1], beta,
+                        n, dim, key, 8192, 2000)
+exit(0)
+
+####################################################################################
+
+print("========== Initialize normalizing flow ==========")
+
 from flow import FermiNet
 def flow_fn(x):
     model = FermiNet(args.depth, args.spsize, args.tpsize, L)
     return model(x)
 flow = hk.transform(flow_fn)
 x_dummy = jax.random.uniform(key, (n, dim), minval=0., maxval=L)
-params = flow.init(key, x_dummy)
+params_flow = flow.init(key, x_dummy)
 
-raveled_params, _ = ravel_pytree(params)
-print("Total number of parameters in the flow model: %d" % raveled_params.size)
+raveled_params_flow, _ = ravel_pytree(params_flow)
+print("#parameters in the flow model: %d" % raveled_params_flow.size)
 
 from logpsi import make_logpsi, make_logpsi_grad_laplacian, make_logp, make_quantum_score
 logpsi = make_logpsi(flow, manybody_indices, L)

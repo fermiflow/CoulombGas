@@ -17,16 +17,16 @@ def transformer(M):
         model = Transformer(M, num_layers, model_size, num_heads, hidden_size)
         return model(x[..., None])
 
-    network = hk.transform(forward_fn)
-    return network
+    van = hk.transform(forward_fn)
+    return van
 
 def test_shapes():
     n, num_states = 13, 40
-    network = transformer(num_states)
+    van = transformer(num_states)
     dummy_state_idx = jnp.arange(n, dtype=jnp.float64)
-    params = network.init(key, dummy_state_idx)
+    params = van.init(key, dummy_state_idx)
 
-    sampler, log_prob = make_autoregressive_sampler(network, n, num_states)
+    sampler, log_prob = make_autoregressive_sampler(van, n, num_states)
     batch = 200
     state_indices = sampler(params, key, batch)
     print("state_indices:", state_indices, "\nstate_indices.shape:", state_indices.shape)
@@ -46,15 +46,15 @@ def test_normalization():
     import itertools
 
     n, num_states = 4, 10
-    network = transformer(num_states)
+    van = transformer(num_states)
     dummy_state_idx = jnp.arange(n, dtype=jnp.float64)
-    params = network.init(key, dummy_state_idx)
+    params = van.init(key, dummy_state_idx)
 
     state_indices = jnp.array( list(itertools.combinations(range(num_states), n)) )
     print("state_indices:", state_indices, "\nstate_indices.shape:", state_indices.shape)
     assert jnp.alltrue(state_indices[:, 1:] > state_indices[:, :-1])
 
-    _, log_prob = make_autoregressive_sampler(network, n, num_states)
+    _, log_prob = make_autoregressive_sampler(van, n, num_states)
 
     logp = log_prob(params, state_indices)
     norm = jnp.exp(logp).sum()

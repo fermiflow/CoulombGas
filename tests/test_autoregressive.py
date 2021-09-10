@@ -68,7 +68,7 @@ def test_Transformer_params():
 
     """ Test parameter number of a complete masked transformer. """
 
-    n, M = 13, 40
+    n, M = 13, 81
     num_layers, model_size, num_heads = 2, 32, 4
     key_size = model_size // num_heads
     hidden_size = 48
@@ -76,10 +76,10 @@ def test_Transformer_params():
     def forward_fn(x):
         model = Transformer(M, num_layers, model_size, num_heads, hidden_size)
         return model(x[..., None])
-    network = hk.transform(forward_fn)
+    van = hk.transform(forward_fn)
 
     x = jnp.array( np.random.choice(M, size=n, replace=False), dtype=jnp.float64 )
-    params = network.init(key, x)
+    params = van.init(key, x)
 
     raveled_params, _ = ravel_pytree(params)
     print("Total number of parameters:", raveled_params.size)
@@ -99,25 +99,25 @@ def test_Transformer_autoregressive():
 
     """ Test autoregressive property of a complete masked transformer. """
 
-    n, M = 13, 40
+    n, M = 13, 81
     num_layers, model_size, num_heads = 2, 32, 4
     hidden_size = 48
 
     def forward_fn(x):
         model = Transformer(M, num_layers, model_size, num_heads, hidden_size)
         return model(x[..., None])
-    network = hk.transform(forward_fn)
+    van = hk.transform(forward_fn)
 
     x = jnp.array( np.random.choice(M, size=n, replace=False), dtype=jnp.float64 )
-    params = network.init(key, x)
+    params = van.init(key, x)
 
-    output = network.apply(params, None, x)
+    output = van.apply(params, None, x)
     print("x:", x.astype(int))
     print("x.shape:", x.shape, "output.shape:", output.shape)
     assert output.shape == (n, M)
 
     random_vec = jnp.array( np.random.randn(n, M) )
-    jac = jax.jacrev(lambda x: (network.apply(params, None, x) * random_vec).sum(axis=-1))(x)
+    jac = jax.jacrev(lambda x: (van.apply(params, None, x) * random_vec).sum(axis=-1))(x)
     print("jac:", jac)
     print("jac.shape:", jac.shape)
     assert jac.shape == (n, n)

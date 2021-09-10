@@ -80,9 +80,8 @@ def manybody_orbitals(n, dim, Ecut):
 if __name__ == "__main__":
     for dim in (2, 3):
         indices, Es = sp_orbitals(dim)
-        indices, Es = indices[Es<=16], Es[Es<=16]
-        #print("indices:\n", indices, indices.shape)
         print("Es:", Es, Es.shape)
+        #print("indices:\n", indices, indices.shape)
 
         print("---- Closed-shell (spinless) electron numbers in dim = %d ----" % dim)
         Ef = Es[0]
