@@ -62,10 +62,12 @@ class Transformer(hk.Module):
         self.hidden_size = hidden_size
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        x = hk.Linear(self.model_size, name="embedding_mlp")(x)
-        x = jax.nn.gelu(x)
+        init_scale = 0.02 / self.num_layers
 
-        init_scale = 2. / self.num_layers
+        x = hk.Linear(self.model_size,
+                      w_init=hk.initializers.VarianceScaling(init_scale, "fan_out"),
+                      name="embedding_mlp")(x)
+        x = jax.nn.gelu(x)
 
         for i in range(self.num_layers):
             x_attn = CausalSelfAttention(self.num_heads,
@@ -76,9 +78,11 @@ class Transformer(hk.Module):
             x_dense = DenseBlock(self.hidden_size, init_scale, name=f'layer{i}_mlp')(x)
             x = x + x_dense
 
-        x = hk.Linear(self.output_size, name="output_mlp")(x)
+        x = hk.Linear(self.output_size,
+                      w_init=hk.initializers.VarianceScaling(init_scale),
+                      name="output_mlp")(x)
 
-        x1init = hk.initializers.TruncatedNormal(1. / jnp.sqrt(self.output_size))
+        x1init = hk.initializers.TruncatedNormal(jnp.sqrt(init_scale / self.output_size))
         x1hat = hk.get_parameter("x1hat", shape=(self.output_size,), init=x1init)
         x = jnp.vstack((x1hat, x[:-1]))
 

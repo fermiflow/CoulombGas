@@ -1,3 +1,7 @@
+"""
+    Second-order optimization algorithm using stochastic reconfiguration.
+    The design of API signatures is in parallel with the package `optax`.
+"""
 import jax
 from jax.config import config
 config.update("jax_enable_x64", True)
@@ -6,15 +10,55 @@ from jax.flatten_util import ravel_pytree
 
 from optax._src import base
 
+FisherSRState = base.EmptyState
+
+def fisher_sr(score_fn, damping, max_norm):
+    """
+        SR for a purely classical probabilistic model, which is also known as the
+    natural gradient descent in machine-learning literatures.
+    """
+
+    def init_fn(params):
+        return FisherSRState()
+
+    def update_fn(grads, state, params):
+        """
+            NOTE: as the computation of Fisher information metric calls for the
+        Monte-Carlo sample `state_indices`, we manually place them within the
+        `params` argument.
+        """
+        params, state_indices = params
+
+        grads_raveled, grads_unravel_fn = ravel_pytree(grads)
+        print("grads.shape:", grads_raveled.shape)
+
+        score = score_fn(params, state_indices)
+        score_raveled = jax.vmap(lambda pytree: ravel_pytree(pytree)[0])(score)
+        print("score.shape:", score_raveled.shape)
+
+        batch_per_device = score_raveled.shape[0]
+
+        fisher = score_raveled.T.dot(score_raveled) / batch_per_device
+        fisher += damping * jnp.eye(fisher.shape[0])
+        updates_raveled = jax.scipy.linalg.solve(fisher, grads_raveled)
+        #scale gradient according to gradnorm
+        gnorm = jnp.sum(grads_raveled * updates_raveled)
+        scale = jnp.minimum(jnp.sqrt(max_norm/gnorm), 1)
+        updates_raveled *= -scale
+        updates = grads_unravel_fn(updates_raveled)
+
+        return updates, state
+
+    return base.GradientTransformation(init_fn, update_fn)
+
+####################################################################################
+
 HybridFisherSRState = base.EmptyState
 
 def hybrid_fisher_sr(classical_score_fn, quantum_score_fn, damping, max_norm):
     """
-        A second-order stochastic reconfiguration algorithm for the hybrid optimization
-    of both a classical probability distribution and a quantum basis wavefunction
-    ansatz.
-
-        The design of API signatures is in parallel with the package `optax`.
+        Hybrid SR for both a classical probabilistic model and a set of
+    quantum basis wavefunction ansatz.
     """
 
     def init_fn(params):

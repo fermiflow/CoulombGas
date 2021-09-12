@@ -20,9 +20,9 @@ parser.add_argument("--Theta", type=float, default=0.05, help="dimensionless tem
 # many-body state distribution: autoregressive transformer.
 parser.add_argument("--Emax", type=int, default=25, help="energy cutoff for the single-particle orbitals")
 parser.add_argument("--nlayers", type=int, default=2, help="number of layers")
-parser.add_argument("--modelsize", type=int, default=32, help="model size")
+parser.add_argument("--modelsize", type=int, default=16, help="model size")
 parser.add_argument("--nheads", type=int, default=4, help="number of heads")
-parser.add_argument("--nhidden", type=int, default=48, help="number of hidden dimension of the MLP within transformer layers")
+parser.add_argument("--nhidden", type=int, default=32, help="number of hidden dimension of the MLP within transformer layers")
 
 # normalizing flow.
 #parser.add_argument("--steps", type=int, default=2, help="FermiNet: steps")
@@ -81,18 +81,6 @@ print("Number of available single-particle orbitals: %d" % num_states)
 from scipy.special import comb
 print("Total number of many-body states (%d in %d): %f" % (n, num_states, comb(num_states, n)))
 
-from orbitals import manybody_orbitals
-manybody_indices, manybody_Es = manybody_orbitals(n, dim, 8)
-manybody_indices, manybody_Es = jnp.array(manybody_indices), jnp.array(manybody_Es)
-print("manybody_indices.shape:", manybody_indices.shape)
-logits = - beta * manybody_Es * (2*jnp.pi/L)**2
-logits -= jax.scipy.special.logsumexp(logits)
-
-E = (manybody_Es * (2*jnp.pi/L)**2 * jnp.exp(logits)).sum()
-S = -(logits * jnp.exp(logits)).sum()
-F = E - S / beta
-print("F:", F, "\tE:", E, "\tS:", S)
-
 ####################################################################################
 
 print("========== Initialize many-body state distribution ==========")
@@ -109,9 +97,40 @@ params_van = van.init(key, state_idx_dummy)
 raveled_params_van, _ = ravel_pytree(params_van)
 print("#parameters in the autoregressive model: %d" % raveled_params_van.size)
 
-from freefermion import pretrain
-params_van = pretrain(van, params_van, (2*jnp.pi/L)**2 * Es[::-1], beta,
-                        n, dim, key, 8192, 2000)
+import os
+
+# Pretraining parameters for the free-fermion model.
+pre_lr = 1e-3
+pre_sr, pre_damping, pre_maxnorm = True, 0.01, 0.0001
+pre_batch = 8192
+
+freefermion_path = args.folder + "freefermion/" \
+                + "n_%d_dim_%d_Theta_%f_Emax_%d/" % (n, dim, args.Theta, args.Emax) \
+                + "nlayers_%d_modelsize_%d_nheads_%d_nhidden_%d" % \
+                    (args.nlayers, args.modelsize, args.nheads, args.nhidden) \
+                + ("_damping_%.5f_maxnorm_%.5f" % (pre_damping, pre_maxnorm)
+                    if pre_sr else "_lr_%.3f" % pre_lr) \
+                + "_batch_%d" % pre_batch
+
+if not os.path.isdir(freefermion_path):
+    os.makedirs(freefermion_path)
+    print("Create freefermion directory: %s" % freefermion_path)
+
+import checkpoint
+pretrained_model_filename = checkpoint.pretrained_model_filename(freefermion_path)
+if os.path.isfile(pretrained_model_filename):
+    print("Load pretrained free-fermion model parameters from file: %s" % pretrained_model_filename)
+    params_van = checkpoint.load_data(pretrained_model_filename)
+else:
+    print("No pretrained free-fermion model found. Initialize parameters from scratch...")
+    from freefermion import pretrain
+    params_van = pretrain(van, params_van,
+                          n, dim, args.Theta, args.Emax,
+                          freefermion_path, key,
+                          pre_sr, pre_damping, pre_maxnorm, pre_lr,
+                          pre_batch, epoch=10000)
+    print("Initialization done. Save the model to file: %s" % pretrained_model_filename)
+    checkpoint.save_data(params_van, pretrained_model_filename)
 exit(0)
 
 ####################################################################################
@@ -161,7 +180,6 @@ else:
 
 ####################################################################################
 
-import os
 import checkpoint
 from utils import shard, replicate
 
