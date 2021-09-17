@@ -1,15 +1,14 @@
 import subprocess 
 import time 
 
-def submitjob(program, args, jobname, run=False, wait=None):
+def submitjob(program, ngpus, jobname, run=False, wait=None):
     job="#!/bin/bash -l\n\n" \
-        "#PBS -l nodes=1:ppn=1:gpus=1\n" \
+        "#PBS -l nodes=1:ppn=1:gpus=%d\n" \
         "#PBS -l walltime=24:00:00\n" \
-        "#PBS -N %s\n" \
         "#PBS -o %s\n" \
         "#PBS -j oe\n" \
         "#PBS -V\n\n" \
-        % (jobname, jobname + ".log")
+        % (ngpus, jobname + ".log")
 
     if wait is not None:
         dependency = "#PBS -W=afterok:%d\n" % wait
@@ -24,9 +23,9 @@ def submitjob(program, args, jobname, run=False, wait=None):
 
     job += "echo ==== Job started at `date` ====\n"
     job += "echo\n"
-    job += "python %s " % program
-    for param, value in args.items():
-        job += "--%s %s " % (param, value)
+
+    job += program
+
     job += "\necho\n"
     job += "echo ==== Job finished at `date` ====\n"
 

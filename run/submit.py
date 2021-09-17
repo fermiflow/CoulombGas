@@ -19,31 +19,44 @@ if __name__=='__main__':
     ################################################################################
 
     # Parameters ###################################################################
-    param1 = 2.0
-    param2 = 6
-    param3list = [0]
+    n, dim, rs, Theta = 13, 2, 1.0, 0.15
+    Emax = 25
+    nlayers, modelsize, nheads, nhidden = 2, 16, 4, 32
+    depth, spsize, tpsize = 2, 16, 16
+    Gmax, kappa = 15, 10
+    mc_therm, mc_steps, mc_stddev = 10, 50, 0.1
+    lr = 1e-3
+    sr, damping, max_norm = False, 1e-3, 1e-3
+    batch, num_devices, epoch_finished, epoch = 4096, 8, 10000, 20000
     ################################################################################
 
-    program = '../test.py'
+    program0 = 'python ../main.py'
 
     # The folder for saving the (standard) output of the job.
     jobdir='../jobs/'
 
-    nickname = 'pmap'
-    resfolder = '/data1/wanglei/heg/' + nickname  + '/' 
-    #cmd = ['mkdir', '-p', resfolder]
-    #subprocess.check_call(cmd)
-    
-    for param3 in param3list:
+    for rs in [1.0, 2.0, 3.0, 4.0, 5.0, 10.0]:
         jobid = input.waitfor 
 
-        args = {"param1": param1,
-                "param2": param2,
-                "param3": param3, 
+        args = {"n": n, "dim": dim, "rs": rs, "Theta": Theta,
+                "Emax": Emax,
+                "nlayers": nlayers, "modelsize": modelsize, "nheads": nheads, "nhidden": nhidden,
+                "depth": depth, "spsize": spsize, "tpsize": tpsize,
+                "Gmax": Gmax, "kappa": kappa,
+                "mc_therm": mc_therm, "mc_steps": mc_steps, "mc_stddev": mc_stddev,
+                "lr": lr,
+                "sr": sr, "damping": damping, "max_norm": max_norm,
+                "batch": batch, "num_devices": num_devices,
+                "epoch_finished": epoch_finished, "epoch": epoch
                 }
         jobname = jobdir 
+        program = program0
         for param, value in args.items():
             jobname += "%s_%s_" % (param, value)
+            if param == "sr":
+                program += (" --sr" if value else "")
+            else:
+                program += " --%s %s" % (param, value)
         jobname = jobname[:-1] 
 
-        jobid = conf.submitjob(program, args, jobname, run=input.run, wait=None)
+        jobid = conf.submitjob(program, args["num_devices"], jobname, run=input.run, wait=None)
