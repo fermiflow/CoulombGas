@@ -33,7 +33,7 @@ def make_loss(log_prob, Es, beta):
 def pretrain(van, params_van,
              n, dim, Theta, Emax,
              path, key,
-             sr, damping, max_norm, lr,
+             lr, sr, damping, max_norm,
              batch, epoch=10000):
 
     # We recompute the relevant system parameters here for convenience.
