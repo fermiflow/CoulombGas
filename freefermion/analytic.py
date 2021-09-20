@@ -17,11 +17,9 @@ def z_e(dim, L, beta, Emax=None):
         z = mp.fsum(mp.exp(-beta*E) for E in Es)
         e = mp.fsum(E*mp.exp(-beta*E) for E in Es) / z
     else:
-        z_single_dim = mp.nsum(lambda n: mp.exp(-beta * (2*mp.pi/L)**2 * n**2),
-                                [-mp.inf, mp.inf])
-        e_single_dim = mp.nsum(lambda n: mp.exp(-beta * (2*mp.pi/L)**2 * n**2)
-                                         * (2*mp.pi/L)**2 * n**2,
-                                [-mp.inf, mp.inf]) / z_single_dim
+        z_single_dim = mp.jtheta(3, 0, mp.exp(-beta * (2*mp.pi/L)**2))
+        e_single_dim = mp.jtheta(3, 0, mp.exp(-beta * (2*mp.pi/L)**2), derivative=2) \
+                            / (-4) * (2*mp.pi/L)**2 / z_single_dim
         z = z_single_dim**dim
         e = dim * e_single_dim
     return z, e
@@ -74,10 +72,9 @@ def Z_E(n, dim, Theta, Emax=None):
 if __name__ == "__main__":
     import os
 
-    nThetas = 57
-    Thetas = mp.linspace(mpf("0.02"), mpf("0.3"), nThetas)
+    Thetas = mp.linspace(mpf("0.02"), mpf("0.6"), 59)
     dim = 2
-    ns = [13, 25, 37]
+    ns = [13, 25, 37, 49, 61]
     path = "/data1/xieh/CoulombGas/master/freefermion/analytic"
 
     for n in ns:
