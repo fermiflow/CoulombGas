@@ -9,7 +9,7 @@ key = jax.random.PRNGKey(42)
 import argparse
 parser = argparse.ArgumentParser(description="Finite-temperature VMC for homogeneous electron gas")
 
-parser.add_argument("--folder", default="/data1/xieh/CoulombGas/master/", help="the folder to save computed data")
+parser.add_argument("--folder", default="/data1/xieh/CoulombGas/master/", help="the folder to save data")
 
 # physical parameters.
 parser.add_argument("--n", type=int, default=13, help="total number of electrons")
@@ -47,7 +47,7 @@ parser.add_argument("--max_norm", type=float, default=1e-3, help="gradnorm maxim
 #parser.add_argument("--use_sparse_solver", action='store_true',  help="")
 
 # training parameters.
-parser.add_argument("--batch", type=int, default=1024, help="batch size")
+parser.add_argument("--batch", type=int, default=4096, help="batch size")
 parser.add_argument("--num_devices", type=int, default=8, help="number of GPU devices")
 #parser.add_argument("--k_steps", type=int, default=1, help="accumulation steps")
 parser.add_argument("--epoch_finished", type=int, default=0, help="number of epochs already finished")
@@ -69,13 +69,13 @@ print("n = %d, dim = %d, L = %f" % (n, dim, L))
 print("========== Initialize single-particle orbitals ==========")
 
 from orbitals import sp_orbitals
-indices, Es = sp_orbitals(dim)
-indices, Es = jnp.array(indices), jnp.array(Es)
+sp_indices, Es = sp_orbitals(dim, args.Emax)
+sp_indices, Es = jnp.array(sp_indices), jnp.array(Es)
 Ef = Es[n-1]
 print("beta = %f, Ef = %d, Emax = %d, corresponding delta_logit = %f"
         % (beta, Ef, args.Emax, beta * (2*jnp.pi/L)**2 * (args.Emax - Ef)))
 
-indices, Es = indices[Es<=args.Emax], Es[Es<=args.Emax]
+sp_indices, Es = sp_indices[::-1], Es[::-1]
 num_states = Es.size
 print("Number of available single-particle orbitals: %d" % num_states)
 from scipy.special import comb
@@ -97,14 +97,20 @@ params_van = van.init(key, state_idx_dummy)
 raveled_params_van, _ = ravel_pytree(params_van)
 print("#parameters in the autoregressive model: %d" % raveled_params_van.size)
 
-import os
+from sampler import make_autoregressive_sampler, make_classical_score
+sampler, log_prob_novmap = make_autoregressive_sampler(van, n, num_states)
+log_prob = jax.vmap(log_prob_novmap, (None, 0), 0)
+
+####################################################################################
+
+print("========== Pretraining ==========")
 
 # Pretraining parameters for the free-fermion model.
 pre_lr = 1e-3
-pre_sr, pre_damping, pre_maxnorm = True, 0.01, 0.0001
+pre_sr, pre_damping, pre_maxnorm = False, 0.01, 0.0001
 pre_batch = 8192
 
-freefermion_path = args.folder + "freefermion/" \
+freefermion_path = args.folder + "freefermion/pretraining/" \
                 + "n_%d_dim_%d_Theta_%f_Emax_%d/" % (n, dim, args.Theta, args.Emax) \
                 + "nlayers_%d_modelsize_%d_nheads_%d_nhidden_%d" % \
                     (args.nlayers, args.modelsize, args.nheads, args.nhidden) \
@@ -112,6 +118,7 @@ freefermion_path = args.folder + "freefermion/" \
                     if pre_sr else "_lr_%.3f" % pre_lr) \
                 + "_batch_%d" % pre_batch
 
+import os
 if not os.path.isdir(freefermion_path):
     os.makedirs(freefermion_path)
     print("Create freefermion directory: %s" % freefermion_path)
@@ -123,15 +130,14 @@ if os.path.isfile(pretrained_model_filename):
     params_van = checkpoint.load_data(pretrained_model_filename)
 else:
     print("No pretrained free-fermion model found. Initialize parameters from scratch...")
-    from freefermion import pretrain
+    from freefermion.pretraining import pretrain
     params_van = pretrain(van, params_van,
                           n, dim, args.Theta, args.Emax,
                           freefermion_path, key,
-                          pre_sr, pre_damping, pre_maxnorm, pre_lr,
-                          pre_batch, epoch=10000)
+                          pre_lr, pre_sr, pre_damping, pre_maxnorm,
+                          pre_batch, epoch=20000)
     print("Initialization done. Save the model to file: %s" % pretrained_model_filename)
     checkpoint.save_data(params_van, pretrained_model_filename)
-exit(0)
 
 ####################################################################################
 
@@ -149,12 +155,12 @@ raveled_params_flow, _ = ravel_pytree(params_flow)
 print("#parameters in the flow model: %d" % raveled_params_flow.size)
 
 from logpsi import make_logpsi, make_logpsi_grad_laplacian, make_logp, make_quantum_score
-logpsi = make_logpsi(flow, manybody_indices, L)
-logp = make_logp(logpsi)
+logpsi_novmap = make_logpsi(flow, sp_indices, L)
+logp = make_logp(logpsi_novmap)
 
 ####################################################################################
 
-print("Initialize relevant quantities for Ewald summation...")
+print("========== Initialize relevant quantities for Ewald summation ==========")
 
 from potential import kpoints, Madelung
 G = kpoints(dim, args.Gmax)
@@ -163,13 +169,13 @@ print("(scaled) Vconst:", Vconst/(n*args.rs/L))
 
 ####################################################################################
 
-print("Initialize optimizer...")
+print("========== Initialize optimizer ==========")
 
 import optax
 if args.sr:
+    classical_score_fn = make_classical_score(log_prob_novmap)
+    quantum_score_fn = make_quantum_score(logpsi_novmap)
     from sr import hybrid_fisher_sr
-    from softmax import classical_score_fn
-    quantum_score_fn = make_quantum_score(logpsi)
     optimizer = hybrid_fisher_sr(classical_score_fn, quantum_score_fn,
             args.damping, args.max_norm)
     print("Optimizer hybrid_fisher_sr: damping = %.5f, max_norm = %.5f." %
@@ -180,12 +186,16 @@ else:
 
 ####################################################################################
 
-import checkpoint
+print("========== Checkpointing ==========")
+
 from utils import shard, replicate
 
 path = args.folder + "n_%d_dim_%d_rs_%f_Theta_%f" % (n, dim, args.rs, args.Theta) \
-                   + "_Ecut_%.1f" % args.Ecut \
-                   + "_depth_%d_spsize_%d_tpsize_%d" % (args.depth, args.spsize, args.tpsize) \
+                   + "_Emax_%d" % args.Emax \
+                   + "_nlayers_%d_modelsize_%d_nheads_%d_nhidden_%d" % \
+                      (args.nlayers, args.modelsize, args.nheads, args.nhidden) \
+                   + "_depth_%d_spsize_%d_tpsize_%d" % \
+                      (args.depth, args.spsize, args.tpsize) \
                    + "_Gmax_%d_kappa_%d" % (args.Gmax, args.kappa) \
                    + "_mctherm_%d_mcsteps_%d_mcstddev_%.2f" % (args.mc_therm, args.mc_steps, args.mc_stddev) \
                    + ("_damping_%.5f_maxnorm_%.5f" % (args.damping, args.max_norm)
@@ -201,17 +211,19 @@ print("Number of GPU devices:", num_devices)
 if num_devices != jax.device_count():
     raise ValueError("Expected %d GPU devices. Got %d." % (num_devices, jax.device_count()))
 
+from VMC import sample_stateindices_and_x
+
 if os.path.isfile(load_ckpt_filename):
     print("Load checkpoint file: %s" % load_ckpt_filename)
-    ckpt = checkpoint.load_checkpoint(load_ckpt_filename)
-    keys, x, logits, params, opt_state = \
-        ckpt["keys"], ckpt["x"], ckpt["logits"], ckpt["params"], ckpt["opt_state"]
+    ckpt = checkpoint.load_data(load_ckpt_filename)
+    keys, x, params_van, params_flow, opt_state = \
+        ckpt["keys"], ckpt["x"], ckpt["params_van"], ckpt["params_flow"], ckpt["opt_state"]
     x, keys = shard(x), shard(keys)
-    logits, params = replicate((logits, params), num_devices)
+    params_van, params_flow = replicate((params_van, params_flow), num_devices)
 else:
     print("No checkpoint file found. Start from scratch.")
 
-    opt_state = optimizer.init((logits, params))
+    opt_state = optimizer.init((params_van, params_flow))
 
     print("Initialize key and coordinate samples...")
 
@@ -223,59 +235,74 @@ else:
     x = jax.random.uniform(key, (num_devices, batch_per_device, n, dim), minval=0., maxval=L)
     keys = jax.random.split(key, num_devices)
     x, keys = shard(x), shard(keys)
-    logits, params = replicate((logits, params), num_devices)
+    params_van, params_flow = replicate((params_van, params_flow), num_devices)
 
-    from VMC import sample_stateindices_and_x
-    pmap_sample_x = jax.pmap(sample_stateindices_and_x, in_axes=(0, 0, None, 0, 0, None, None, None),
-                                       static_broadcasted_argnums=2)
+    pmap_sample_x = jax.pmap(sample_stateindices_and_x,
+                             in_axes=(0, None, 0, None, 0, 0, None, None, None),
+                             static_broadcasted_argnums=(1, 3),
+                             donate_argnums=4)
     for i in range(args.mc_therm):
         print("---- thermal step %d ----" % (i+1))
-        keys, _, x = pmap_sample_x(keys, logits, logp, x, params, args.mc_steps, args.mc_stddev, L)
+        keys, _, x = pmap_sample_x(keys,
+                                   sampler, params_van,
+                                   logp, x, params_flow,
+                                   args.mc_steps, args.mc_stddev, L)
     print("keys shape:", keys.shape, "\t\ttype:", type(keys))
     print("x shape:", x.shape, "\t\ttype:", type(x))
 
 ####################################################################################
 
-logpsi_grad_laplacian = make_logpsi_grad_laplacian(logpsi)
+logpsi, logpsi_grad_laplacian = make_logpsi_grad_laplacian(logpsi_novmap)
 
 from VMC import make_loss
-loss_fn = make_loss(logpsi_grad_laplacian, args.kappa, G, L, args.rs, Vconst, beta)
+observable_and_lossfn = make_loss(log_prob, logpsi, logpsi_grad_laplacian,
+                                  args.kappa, G, L, args.rs, Vconst, beta)
 
 from functools import partial
 
 @partial(jax.pmap, axis_name="p",
         in_axes=(0, 0, None, 0, 0),
-        out_axes=(0, 0, None, 0, 0, 0, 0, 0))
-def update(logits, params, opt_state, key, x):
+        out_axes=(0, 0, None, 0),
+        donate_argnums=(3, 4))
+def update(params_van, params_flow, opt_state, state_indices, x):
 
-    key, state_indices, x = sample_stateindices_and_x(key, logits,
-                                    logp, x, params, args.mc_steps, args.mc_stddev, L)
-    print("Sampled state indices and electron coordinates.")
+    data, classical_lossfn, quantum_lossfn = observable_and_lossfn(
+            params_van, params_flow, state_indices, x)
+    grad_params_van = jax.grad(classical_lossfn)(params_van)
+    print("classical_lossfn grad done.")
+    grad_params_flow = jax.grad(quantum_lossfn)(params_flow)
+    print("quantum_lossfn grad done.")
+    grads = grad_params_van, grad_params_flow
 
-    grads, aux = jax.grad(loss_fn, argnums=(0, 1), has_aux=True)(logits, params, state_indices, x)
     grads = jax.lax.pmean(grads, axis_name="p")
 
     updates, opt_state = optimizer.update(grads, opt_state,
-                            params=(logits, params, state_indices, x) if args.sr else None)
-    logits, params = optax.apply_updates((logits, params), updates)
+                            params=(params_van, params_flow, state_indices, x) if args.sr else None)
+    params_van, params_flow = optax.apply_updates((params_van, params_flow), updates)
+    print("HERE!")
 
-    logpsi, Eloc_real = aux["logpsi"], aux["Eloc_real"]
-    auxiliary_data = aux["statistics"]
-    return logits, params, opt_state, key, x, auxiliary_data, logpsi, Eloc_real
+    #logpsi, Eloc_real = aux["logpsi"], aux["Eloc_real"]
+    return params_van, params_flow, opt_state, data
 
 log_filename = os.path.join(path, "data.txt")
 f = open(log_filename, "w" if args.epoch_finished == 0 else "a",
             buffering=1, newline="\n")
 
 for i in range(args.epoch_finished + 1, args.epoch + 1):
-    logits, params, opt_state, keys, x, aux, logpsi, Eloc_real \
-        = update(logits, params, opt_state, keys, x)
+    keys, state_indices, x = pmap_sample_x(keys,
+                                           sampler, params_van,
+                                           logp, x, params_flow,
+                                           args.mc_steps, args.mc_stddev, L)
+    print("Sampled state indices and electron coordinates.")
 
-    aux = jax.tree_map(lambda x: x[0], aux)
-    K, K2_mean, V, V2_mean, E, E2_mean, F, F2_mean, S, S2_mean, S_logits = \
-            aux["K_mean"], aux["K2_mean"], aux["V_mean"], aux["V2_mean"], \
-            aux["E_mean"], aux["E2_mean"], aux["F_mean"], aux["F2_mean"], \
-            aux["S_mean"], aux["S2_mean"], aux["S_logits"]
+    params_van, params_flow, opt_state, data \
+        = update(params_van, params_flow, opt_state, state_indices, x)
+
+    data = jax.tree_map(lambda x: x[0], data)
+    K, K2_mean, V, V2_mean, E, E2_mean, F, F2_mean, S, S2_mean = \
+            data["K_mean"], data["K2_mean"], data["V_mean"], data["V2_mean"], \
+            data["E_mean"], data["E2_mean"], data["F_mean"], data["F2_mean"], \
+            data["S_mean"], data["S2_mean"]
     K_std = jnp.sqrt((K2_mean - K**2) / args.batch)
     V_std = jnp.sqrt((V2_mean - V**2) / args.batch)
     E_std = jnp.sqrt((E2_mean - E**2) / args.batch)
@@ -288,21 +315,21 @@ for i in range(args.epoch_finished + 1, args.epoch + 1):
             "E:", E/args.rs**2, "E_std:", E_std/args.rs**2,
             "K:", K/args.rs**2, "K_std:", K_std/args.rs**2,
             "V:", V/args.rs**2, "V_std:", V_std/args.rs**2,
-            "S:", S, "S_std:", S_std, "S_logits:", S_logits)
-    f.write( ("%6d" + "  %.6f"*11 + "\n") % (i, F/args.rs**2, F_std/args.rs**2,
+            "S:", S, "S_std:", S_std)
+    f.write( ("%6d" + "  %.6f"*10 + "\n") % (i, F/args.rs**2, F_std/args.rs**2,
                                                 E/args.rs**2, E_std/args.rs**2,
                                                 K/args.rs**2, K_std/args.rs**2,
                                                 V/args.rs**2, V_std/args.rs**2,
-                                                S, S_std, S_logits) )
+                                                S, S_std) )
 
     if i % 100 == 0:
         ckpt = {"keys": keys, "x": x,
-                "logits": jax.tree_map(lambda x: x[0], logits),
-                "params": jax.tree_map(lambda x: x[0], params),
+                "params_van": jax.tree_map(lambda x: x[0], params_van),
+                "params_flow": jax.tree_map(lambda x: x[0], params_flow),
                 "opt_state": opt_state
                }
         save_ckpt_filename = checkpoint.ckpt_filename(i, path)
-        checkpoint.save_checkpoint(ckpt, save_ckpt_filename)
+        checkpoint.save_data(ckpt, save_ckpt_filename)
         print("Save checkpoint file: %s" % save_ckpt_filename)
 
     """

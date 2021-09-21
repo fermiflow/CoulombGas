@@ -21,7 +21,7 @@ def make_autoregressive_sampler(network, n, num_states, mask_fn=False):
         Relevant dimensions: (before vmapped)
 
         INPUT:
-            state_idx: (n,), each elements being an integer in the range [0, num_states).
+            state_idx: (n,), with elements being integers in [0, num_states).
         OUTPUT:
             masked_logits: (n, num_states)
         """
@@ -55,23 +55,22 @@ def make_autoregressive_sampler(network, n, num_states, mask_fn=False):
     else:
         return sampler, log_prob
 
-def make_classical_score(log_prob):
-    """
-        Classical score function: params, sample -> score
-        This function can be useful for stochastic reconfiguration, the second-order
-    optimization algorithm based on classical Fisher information matrix.
 
-    Relevant dimension: (after vmapped)
+"""
+    Classical score function: params, sample -> score
+    This function can be useful for stochastic reconfiguration, the second-order
+optimization algorithm based on classical Fisher information matrix.
 
-    INPUT:
-        params: a pytree    sample: (batch, n), each element being an integer in [0, num_states).
-    OUTPUT:
-        a pytree of the same structure as `params`, in which each leaf node has
-    an additional leading batch dimension.
-    """
+Relevant dimension: (after vmapped)
 
-    classical_score_fn = jax.vmap(jax.grad(log_prob), (None, 0), 0)
-    return classical_score_fn
+INPUT:
+    params: a pytree    sample: (batch, n), with elements being integers in [0, num_states).
+OUTPUT:
+    a pytree of the same structure as `params`, in which each leaf node has
+an additional leading batch dimension.
+"""
+make_classical_score = lambda log_prob: jax.vmap(jax.grad(log_prob), (None, 0), 0)
+
 
 if __name__ == "__main__":
     n, num_states = 4, 10

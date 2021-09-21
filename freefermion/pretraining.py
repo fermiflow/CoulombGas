@@ -45,24 +45,15 @@ def pretrain(van, params_van,
         beta = 1/ (4 * Theta)
 
     from orbitals import sp_orbitals
-    _, Es = sp_orbitals(dim)
-    Es = (2*jnp.pi/L)**2 * jnp.array( Es[Es<=Emax][::-1] )
+    _, Es = sp_orbitals(dim, Emax)
+    Es = (2*jnp.pi/L)**2 * jnp.array(Es[::-1])
 
 
-    # Rough check using softmax.
-    from orbitals import manybody_orbitals
-    Ecut = 10
-    _, manybody_Es = manybody_orbitals(n, dim, Ecut)
-    manybody_Es = jnp.array(manybody_Es)
-    print("manybody_Es.shape:", manybody_Es.shape)
-    logits = - beta * manybody_Es * (2*jnp.pi/L)**2
-    logits -= jax.scipy.special.logsumexp(logits)
-
-    E = (manybody_Es * (2*jnp.pi/L)**2 * jnp.exp(logits)).sum()
-    S = -(logits * jnp.exp(logits)).sum()
-    F = E - S / beta
-    print("F:", F, "\tE:", E, "\tS:", S)
-
+    from mpmath import mpf, mp
+    from freefermion.analytic import Z_E
+    F, E, S = Z_E(n, dim, mpf(str(Theta)), Emax)
+    print("Analytic results for the thermodynamic quantities: "
+            "F: %s, E: %s, S: %s" % (mp.nstr(F), mp.nstr(E), mp.nstr(S)))
 
     num_states = Es.size
     sampler, log_prob_novmap = make_autoregressive_sampler(van, n, num_states)

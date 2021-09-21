@@ -6,23 +6,23 @@ import jax.numpy as jnp
 from slater import logslaterdet
 from functools import partial
 
-def make_logpsi(flow, manybody_indices, L):
+def make_logpsi(flow, sp_indices, L):
 
     def logpsi(x, params, state_idx):
 
         """
-            Generic function that computes ln Psi_n(x) given a many-body `state_idx`
-        and a set of electron coordinates `x`, given flow parameters `params`.
+            Generic function that computes ln Psi_n(x) given a single-particle orbital
+        `state_idx`, a set of electron coordinates `x`, and flow parameters `params`.
 
         INPUT:
-            x: (n, dim)     state_idx: a single integer index
+            x: (n, dim)     state_idx: (n,), with elements being integers in [0, num_states).
 
         OUTPUT:
             a single complex number ln Psi_n(x), given in the form of a 2-tuple (real, imag).
         """
 
         z = flow.apply(params, None, x)
-        log_phi = logslaterdet(manybody_indices[state_idx], z, L)
+        log_phi = logslaterdet(sp_indices[state_idx], z, L)
 
         n, dim = x.shape
         x_flatten = x.reshape(-1)
@@ -37,21 +37,23 @@ def make_logpsi(flow, manybody_indices, L):
 def make_logpsi_grad_laplacian(logpsi, key=None):
 
     @partial(jax.vmap, in_axes=(0, None, 0), out_axes=0)
+    def logpsi_vmapped(x, params, state_idx):
+        logpsix = logpsi(x, params, state_idx)
+        return logpsix[0] + 1j * logpsix[1]
+
+    @partial(jax.vmap, in_axes=(0, None, 0), out_axes=0)
     def logpsi_grad_laplacian(x, params, state_idx):
         """
-            Computes not only the value of logpsi, but also its gradient and laplacian.
+            Computes the gradient and laplacian of logpsi w.r.t. electron coordinates x.
         The final result is in complex form.
 
         Relevant dimensions: (after vmapped)
 
         INPUT:
-            x: (batch, n, dim)
+            x: (batch, n, dim)  state_idx: (batch, n)
         OUTPUT:
-            logpsix: (batch,)   grad: (batch, n, dim)   laplacian: (batch,)
+            grad: (batch, n, dim)   laplacian: (batch,)
         """
-        logpsix = logpsi(x, params, state_idx)
-        logpsix = logpsix[0] + 1j * logpsix[1]
-        print("Computed logpsi.")
 
         grad = jax.jacrev(logpsi)(x, params, state_idx)
         grad = grad[0] + 1j * grad[1]
@@ -73,7 +75,7 @@ def make_logpsi_grad_laplacian(logpsi, key=None):
         laplacian = laplacian[0] + 1j * laplacian[1]
         print("Computed laplacian.")
 
-        return logpsix, grad, laplacian
+        return grad, laplacian
 
     def logpsi_grad_laplacian_hutchinson(x, params, state_indices):
 
@@ -89,10 +91,6 @@ def make_logpsi_grad_laplacian(logpsi, key=None):
             i.e., (after vmapped) (batch, n, dim).
             """
 
-            logpsix = logpsi(x, params, state_idx)
-            logpsix = logpsix[0] + 1j * logpsix[1]
-            print("Computed logpsi.")
-
             grad, hvp = jax.jvp( jax.jacrev(lambda x: logpsi(x, params, state_idx)),
                                  (x,), (v,) )
 
@@ -103,14 +101,12 @@ def make_logpsi_grad_laplacian(logpsi, key=None):
             random_laplacian = random_laplacian[0] + 1j * random_laplacian[1]
             print("Computed laplacian.")
 
-            return logpsix, grad, random_laplacian
+            return grad, random_laplacian
 
         return logpsi_grad_random_laplacian(x, params, state_indices, v)
 
-    if key is not None:
-        return logpsi_grad_laplacian_hutchinson
-    else:
-        return logpsi_grad_laplacian
+    return logpsi_vmapped, \
+           (logpsi_grad_laplacian_hutchinson if key is not None else logpsi_grad_laplacian)
 
 def make_logp(logpsi):
 
@@ -135,7 +131,7 @@ def make_quantum_score(logpsi):
         Relevant dimension: (after vmapped)
 
         OUTPUT:
-            a pytree of the same structure as `params`, in which each leaf node have
+            a pytree of the same structure as `params`, in which each leaf node has
         an additional leading batch dimension.
         """
         grad_params = jax.jacrev(logpsi, argnums=1)(x, params, state_idx)
