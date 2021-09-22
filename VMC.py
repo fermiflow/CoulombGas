@@ -7,7 +7,10 @@ from functools import partial
 
 from MCMC import mcmc
 
-#@partial(jax.pmap, in_axes=(0, 0, 0, 0, None, None), static_broadcasted_argnums=4)
+@partial(jax.pmap, axis_name="p",
+                   in_axes=(0, None, 0, None, 0, 0, None, None, None),
+                   static_broadcasted_argnums=(1, 3),
+                   donate_argnums=4)
 def sample_stateindices_and_x(key,
                               sampler, params_van,
                               logp, x, params_flow,
@@ -55,7 +58,6 @@ def make_loss(log_prob, logpsi, logpsi_grad_laplacian, kappa, G, L, rs, Vconst, 
                       "E_mean": E_mean, "E2_mean": E2_mean,
                       "F_mean": F_mean, "F2_mean": F2_mean,
                       "S_mean": S_mean, "S2_mean": S2_mean}
-        del grad, laplacian, kinetic, potential
 
         def classical_lossfn(params_van):
             logp_states = log_prob(params_van, state_indices)

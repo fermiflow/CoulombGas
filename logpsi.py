@@ -34,7 +34,7 @@ def make_logpsi(flow, sp_indices, L):
 
     return logpsi
 
-def make_logpsi_grad_laplacian(logpsi, key=None):
+def make_logpsi_grad_laplacian(logpsi, forloop=True, key=None):
 
     @partial(jax.vmap, in_axes=(0, None, 0), out_axes=0)
     def logpsi_vmapped(x, params, state_idx):
@@ -64,15 +64,24 @@ def make_logpsi_grad_laplacian(logpsi, key=None):
         grad_logpsi = jax.jacrev(lambda x: logpsi(x.reshape(n, dim), params, state_idx))
 
         def _laplacian(x):
-            def body_fun(x, basevec):
-                _, tangent = jax.jvp(grad_logpsi, (x,), (basevec,))
-                return (tangent * basevec).sum(axis=-1)
-            eye = jnp.eye(x.shape[0])
-            laplacian = jax.vmap(body_fun, (None, 1), 1)(x, eye).sum(axis=-1)
+            if forloop:
+                print("forloop version...")
+                def body_fun(i, val):
+                    _, tangent = jax.jvp(grad_logpsi, (x,), (eye[i],))
+                    return val + tangent[0, i] + 1j * tangent[1, i]
+                eye = jnp.eye(x.shape[0])
+                laplacian = jax.lax.fori_loop(0, x.shape[0], body_fun, 0.+0.j)
+            else:
+                print("vmap version...")
+                def body_fun(x, basevec):
+                    _, tangent = jax.jvp(grad_logpsi, (x,), (basevec,))
+                    return (tangent * basevec).sum(axis=-1)
+                eye = jnp.eye(x.shape[0])
+                laplacian = jax.vmap(body_fun, (None, 1), 1)(x, eye).sum(axis=-1)
+                laplacian = laplacian[0] + 1j * laplacian[1]
             return laplacian
 
         laplacian = _laplacian(x_flatten)
-        laplacian = laplacian[0] + 1j * laplacian[1]
         print("Computed laplacian.")
 
         return grad, laplacian
@@ -99,7 +108,7 @@ def make_logpsi_grad_laplacian(logpsi, key=None):
 
             random_laplacian = (hvp * v).sum(axis=(-2, -1))
             random_laplacian = random_laplacian[0] + 1j * random_laplacian[1]
-            print("Computed laplacian.")
+            print("Computed Hutchinson's estimator of laplacian.")
 
             return grad, random_laplacian
 

@@ -4,6 +4,7 @@ config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 from jax.flatten_util import ravel_pytree
 
+print("jax.__version__:", jax.__version__)
 key = jax.random.PRNGKey(42)
 
 import argparse
@@ -237,13 +238,9 @@ else:
     x, keys = shard(x), shard(keys)
     params_van, params_flow = replicate((params_van, params_flow), num_devices)
 
-    pmap_sample_x = jax.pmap(sample_stateindices_and_x,
-                             in_axes=(0, None, 0, None, 0, 0, None, None, None),
-                             static_broadcasted_argnums=(1, 3),
-                             donate_argnums=4)
     for i in range(args.mc_therm):
         print("---- thermal step %d ----" % (i+1))
-        keys, _, x = pmap_sample_x(keys,
+        keys, _, x = sample_stateindices_and_x(keys,
                                    sampler, params_van,
                                    logp, x, params_flow,
                                    args.mc_steps, args.mc_stddev, L)
@@ -268,12 +265,10 @@ def update(params_van, params_flow, opt_state, state_indices, x):
 
     data, classical_lossfn, quantum_lossfn = observable_and_lossfn(
             params_van, params_flow, state_indices, x)
-    grad_params_van = jax.grad(classical_lossfn)(params_van)
-    print("classical_lossfn grad done.")
-    grad_params_flow = jax.grad(quantum_lossfn)(params_flow)
-    print("quantum_lossfn grad done.")
-    grads = grad_params_van, grad_params_flow
 
+    grad_params_van = jax.grad(classical_lossfn)(params_van)
+    grad_params_flow = jax.grad(quantum_lossfn)(params_flow)
+    grads = grad_params_van, grad_params_flow
     grads = jax.lax.pmean(grads, axis_name="p")
 
     updates, opt_state = optimizer.update(grads, opt_state,
@@ -289,12 +284,10 @@ f = open(log_filename, "w" if args.epoch_finished == 0 else "a",
             buffering=1, newline="\n")
 
 for i in range(args.epoch_finished + 1, args.epoch + 1):
-    keys, state_indices, x = pmap_sample_x(keys,
+    keys, state_indices, x = sample_stateindices_and_x(keys,
                                            sampler, params_van,
                                            logp, x, params_flow,
                                            args.mc_steps, args.mc_stddev, L)
-    print("Sampled state indices and electron coordinates.")
-
     params_van, params_flow, opt_state, data \
         = update(params_van, params_flow, opt_state, state_indices, x)
 
