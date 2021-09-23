@@ -48,9 +48,9 @@ parser.add_argument("--max_norm", type=float, default=1e-3, help="gradnorm maxim
 #parser.add_argument("--use_sparse_solver", action='store_true',  help="")
 
 # training parameters.
-parser.add_argument("--batch", type=int, default=4096, help="batch size")
+parser.add_argument("--batch", type=int, default=2048, help="batch size (per single gradient accumulation step)")
 parser.add_argument("--num_devices", type=int, default=8, help="number of GPU devices")
-#parser.add_argument("--k_steps", type=int, default=1, help="accumulation steps")
+parser.add_argument("--acc_steps", type=int, default=1, help="gradient accumulation steps")
 parser.add_argument("--epoch_finished", type=int, default=0, help="number of epochs already finished")
 parser.add_argument("--epoch", type=int, default=10000, help="final epoch")
 
@@ -67,7 +67,7 @@ print("n = %d, dim = %d, L = %f" % (n, dim, L))
 
 ####################################################################################
 
-print("========== Initialize single-particle orbitals ==========")
+print("\n========== Initialize single-particle orbitals ==========")
 
 from orbitals import sp_orbitals
 sp_indices, Es = sp_orbitals(dim, args.Emax)
@@ -84,7 +84,7 @@ print("Total number of many-body states (%d in %d): %f" % (n, num_states, comb(n
 
 ####################################################################################
 
-print("========== Initialize many-body state distribution ==========")
+print("\n========== Initialize many-body state distribution ==========")
 
 import haiku as hk
 from autoregressive import Transformer
@@ -104,7 +104,7 @@ log_prob = jax.vmap(log_prob_novmap, (None, 0), 0)
 
 ####################################################################################
 
-print("========== Pretraining ==========")
+print("\n========== Pretraining ==========")
 
 # Pretraining parameters for the free-fermion model.
 pre_lr = 1e-3
@@ -142,7 +142,7 @@ else:
 
 ####################################################################################
 
-print("========== Initialize normalizing flow ==========")
+print("\n========== Initialize normalizing flow ==========")
 
 from flow import FermiNet
 def flow_fn(x):
@@ -161,7 +161,7 @@ logp = make_logp(logpsi_novmap)
 
 ####################################################################################
 
-print("========== Initialize relevant quantities for Ewald summation ==========")
+print("\n========== Initialize relevant quantities for Ewald summation ==========")
 
 from potential import kpoints, Madelung
 G = kpoints(dim, args.Gmax)
@@ -170,7 +170,7 @@ print("(scaled) Vconst:", Vconst/(n*args.rs/L))
 
 ####################################################################################
 
-print("========== Initialize optimizer ==========")
+print("\n========== Initialize optimizer ==========")
 
 import optax
 if args.sr:
@@ -187,7 +187,7 @@ else:
 
 ####################################################################################
 
-print("========== Checkpointing ==========")
+print("\n========== Checkpointing ==========")
 
 from utils import shard, replicate
 
@@ -201,7 +201,7 @@ path = args.folder + "n_%d_dim_%d_rs_%f_Theta_%f" % (n, dim, args.rs, args.Theta
                    + "_mctherm_%d_mcsteps_%d_mcstddev_%.2f" % (args.mc_therm, args.mc_steps, args.mc_stddev) \
                    + ("_damping_%.5f_maxnorm_%.5f" % (args.damping, args.max_norm)
                         if args.sr else "_lr_%.3f" % args.lr) \
-                   + "_batch_%d_ndevices_%d" % (args.batch, args.num_devices)
+                   + "_batch_%d_ndevices_%d_accsteps_%d" % (args.batch, args.num_devices, args.acc_steps)
 if not os.path.isdir(path):
     os.makedirs(path)
     print("Create directory: %s" % path)
@@ -249,6 +249,8 @@ else:
 
 ####################################################################################
 
+print("\n========== Training ==========")
+
 logpsi, logpsi_grad_laplacian = make_logpsi_grad_laplacian(logpsi_novmap)
 
 from VMC import make_loss
@@ -258,10 +260,12 @@ observable_and_lossfn = make_loss(log_prob, logpsi, logpsi_grad_laplacian,
 from functools import partial
 
 @partial(jax.pmap, axis_name="p",
-        in_axes=(0, 0, None, 0, 0),
-        out_axes=(0, 0, None, 0),
+        in_axes=(0, 0, None, 0, 0, 0, None),
+        out_axes=(0, 0, None, 0, 0),
+        static_broadcasted_argnums=6,
         donate_argnums=(3, 4))
-def update(params_van, params_flow, opt_state, state_indices, x):
+def update(params_van, params_flow, opt_state, state_indices, x,
+           grads_acc, final_step):
 
     data, classical_lossfn, quantum_lossfn = observable_and_lossfn(
             params_van, params_flow, state_indices, x)
@@ -270,37 +274,49 @@ def update(params_van, params_flow, opt_state, state_indices, x):
     grad_params_flow = jax.grad(quantum_lossfn)(params_flow)
     grads = grad_params_van, grad_params_flow
     grads = jax.lax.pmean(grads, axis_name="p")
+    grads_acc = jax.tree_multimap(lambda acc, i: acc + i, grads_acc, grads)
 
-    updates, opt_state = optimizer.update(grads, opt_state,
-                            params=(params_van, params_flow, state_indices, x) if args.sr else None)
-    params_van, params_flow = optax.apply_updates((params_van, params_flow), updates)
-    print("HERE!")
+    if final_step:
+        grads_acc = jax.tree_map(lambda acc: acc / args.acc_steps, grads_acc)
+        updates, opt_state = optimizer.update(grads_acc, opt_state,
+                                params=(params_van, params_flow, state_indices, x) if args.sr else None)
+        params_van, params_flow = optax.apply_updates((params_van, params_flow), updates)
 
-    #logpsi, Eloc_real = aux["logpsi"], aux["Eloc_real"]
-    return params_van, params_flow, opt_state, data
+    return params_van, params_flow, opt_state, data, grads_acc
 
 log_filename = os.path.join(path, "data.txt")
 f = open(log_filename, "w" if args.epoch_finished == 0 else "a",
             buffering=1, newline="\n")
 
 for i in range(args.epoch_finished + 1, args.epoch + 1):
-    keys, state_indices, x = sample_stateindices_and_x(keys,
-                                           sampler, params_van,
-                                           logp, x, params_flow,
-                                           args.mc_steps, args.mc_stddev, L)
-    params_van, params_flow, opt_state, data \
-        = update(params_van, params_flow, opt_state, state_indices, x)
 
-    data = jax.tree_map(lambda x: x[0], data)
+    grads_acc = jax.tree_map(jnp.zeros_like, (params_van, params_flow))
+    grads_acc = shard(grads_acc)
+
+    for acc in range(args.acc_steps):
+        keys, state_indices, x = sample_stateindices_and_x(keys,
+                                               sampler, params_van,
+                                               logp, x, params_flow,
+                                               args.mc_steps, args.mc_stddev, L)
+        final_step = (acc == args.acc_steps - 1)
+        params_van, params_flow, opt_state, data, grads_acc \
+            = update(params_van, params_flow, opt_state, state_indices, x, grads_acc, final_step)
+        data = jax.tree_map(lambda x: x[0], data)
+        if acc == 0:
+            data_acc = data
+        else:
+            data_acc = jax.tree_multimap(lambda acc, i: acc + i, data_acc, data)
+
+    data = jax.tree_map(lambda acc: acc / args.acc_steps, data_acc)
     K, K2_mean, V, V2_mean, E, E2_mean, F, F2_mean, S, S2_mean = \
             data["K_mean"], data["K2_mean"], data["V_mean"], data["V2_mean"], \
             data["E_mean"], data["E2_mean"], data["F_mean"], data["F2_mean"], \
             data["S_mean"], data["S2_mean"]
-    K_std = jnp.sqrt((K2_mean - K**2) / args.batch)
-    V_std = jnp.sqrt((V2_mean - V**2) / args.batch)
-    E_std = jnp.sqrt((E2_mean - E**2) / args.batch)
-    F_std = jnp.sqrt((F2_mean - F**2) / args.batch)
-    S_std = jnp.sqrt((S2_mean - S**2) / args.batch)
+    K_std = jnp.sqrt((K2_mean - K**2) / (args.batch*args.acc_steps))
+    V_std = jnp.sqrt((V2_mean - V**2) / (args.batch*args.acc_steps))
+    E_std = jnp.sqrt((E2_mean - E**2) / (args.batch*args.acc_steps))
+    F_std = jnp.sqrt((F2_mean - F**2) / (args.batch*args.acc_steps))
+    S_std = jnp.sqrt((S2_mean - S**2) / (args.batch*args.acc_steps))
 
     # Note the quantities with energy dimension obtained above are in units of Ry/rs^2.
     print("iter: %04d" % i,
