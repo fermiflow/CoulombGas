@@ -38,7 +38,7 @@ class DenseBlock(hk.Module):
         size = x.shape[-1]
         initializer = hk.initializers.VarianceScaling(self.init_scale)
         x = hk.Linear(self.hidden_size, w_init=initializer)(x)
-        x = jax.nn.gelu(x)
+        x = jnp.tanh(x)
         return hk.Linear(size, w_init=initializer)(x)
 
 class Transformer(hk.Module):
@@ -67,7 +67,7 @@ class Transformer(hk.Module):
         x = hk.Linear(self.model_size,
                       w_init=hk.initializers.VarianceScaling(init_scale, "fan_out"),
                       name="embedding_mlp")(x)
-        x = jax.nn.gelu(x)
+        x = jnp.tanh(x)
 
         for i in range(self.num_layers):
             x_attn = CausalSelfAttention(self.num_heads,
@@ -78,6 +78,7 @@ class Transformer(hk.Module):
             x_dense = DenseBlock(self.hidden_size, init_scale, name=f'layer{i}_mlp')(x)
             x = x + x_dense
 
+        x = jnp.tanh(x)
         x = hk.Linear(self.output_size,
                       w_init=hk.initializers.VarianceScaling(init_scale),
                       name="output_mlp")(x)

@@ -108,7 +108,7 @@ print("\n========== Pretraining ==========")
 
 # Pretraining parameters for the free-fermion model.
 pre_lr = 1e-3
-pre_sr, pre_damping, pre_maxnorm = False, 0.01, 0.0001
+pre_sr, pre_damping, pre_maxnorm = True, 0.001, 0.001
 pre_batch = 8192
 
 freefermion_path = args.folder + "freefermion/pretraining/" \
@@ -136,9 +136,10 @@ else:
                           n, dim, args.Theta, args.Emax,
                           freefermion_path, key,
                           pre_lr, pre_sr, pre_damping, pre_maxnorm,
-                          pre_batch, epoch=20000)
+                          pre_batch, epoch=10000)
     print("Initialization done. Save the model to file: %s" % pretrained_model_filename)
     checkpoint.save_data(params_van, pretrained_model_filename)
+exit(0)
 
 ####################################################################################
 
