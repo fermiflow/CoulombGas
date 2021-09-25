@@ -41,6 +41,14 @@ class DenseBlock(hk.Module):
         x = jnp.tanh(x)
         return hk.Linear(size, w_init=initializer)(x)
 
+def layer_norm(x: jnp.ndarray,
+               name: Optional[str] = None) -> jnp.ndarray:
+  """Apply a unique LayerNorm to x with default settings."""
+  return hk.LayerNorm(axis=-1,
+                      create_scale=True,
+                      create_offset=True,
+                      name=name)(x)
+
 class Transformer(hk.Module):
 
     def __init__(self,
@@ -73,12 +81,12 @@ class Transformer(hk.Module):
             x_attn = CausalSelfAttention(self.num_heads,
                                          self.key_size,
                                          init_scale,
-                                         name=f'layer{i}_attn')(x)
-            x = x + x_attn
-            x_dense = DenseBlock(self.hidden_size, init_scale, name=f'layer{i}_mlp')(x)
-            x = x + x_dense
+                                         name=f"layer{i}_attn")(x)
+            x = layer_norm(x + x_attn, name=f"layer{i}_ln1")
+            x_dense = DenseBlock(self.hidden_size, init_scale, name=f"layer{i}_mlp")(x)
+            x = layer_norm(x + x_dense, name=f"layer{i}_ln2")
 
-        x = jnp.tanh(x)
+        #x = jnp.tanh(x)
         x = hk.Linear(self.output_size,
                       w_init=hk.initializers.VarianceScaling(init_scale),
                       name="output_mlp")(x)

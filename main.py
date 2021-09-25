@@ -117,7 +117,7 @@ freefermion_path = args.folder + "freefermion/pretraining/" \
                     (args.nlayers, args.modelsize, args.nheads, args.nhidden) \
                 + ("_damping_%.5f_maxnorm_%.5f" % (pre_damping, pre_maxnorm)
                     if pre_sr else "_lr_%.3f" % pre_lr) \
-                + "_batch_%d" % pre_batch
+                + "_batch_%d_layernorm" % pre_batch
 
 import os
 if not os.path.isdir(freefermion_path):
@@ -139,7 +139,6 @@ else:
                           pre_batch, epoch=10000)
     print("Initialization done. Save the model to file: %s" % pretrained_model_filename)
     checkpoint.save_data(params_van, pretrained_model_filename)
-exit(0)
 
 ####################################################################################
 
@@ -252,7 +251,7 @@ else:
 
 print("\n========== Training ==========")
 
-logpsi, logpsi_grad_laplacian = make_logpsi_grad_laplacian(logpsi_novmap)
+logpsi, logpsi_grad_laplacian = make_logpsi_grad_laplacian(logpsi_novmap, forloop=False)
 
 from VMC import make_loss
 observable_and_lossfn = make_loss(log_prob, logpsi, logpsi_grad_laplacian,
