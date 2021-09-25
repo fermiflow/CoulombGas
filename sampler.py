@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 from functools import partial
 
-def make_autoregressive_sampler(network, n, num_states, mask_fn=False):
+def make_autoregressive_sampler(network, sp_indices, n, num_states, mask_fn=False):
 
     def _mask(state_idx):
         mask = jnp.tril(jnp.ones((n, num_states)), k=num_states-n)
@@ -26,7 +26,7 @@ def make_autoregressive_sampler(network, n, num_states, mask_fn=False):
             masked_logits: (n, num_states)
         """
 
-        logits = network.apply(params, None, state_idx)
+        logits = network.apply(params, None, sp_indices[state_idx])
         mask = _mask(state_idx)
         masked_logits = jnp.where(mask, logits, -1e50)
         return masked_logits
@@ -74,7 +74,7 @@ make_classical_score = lambda log_prob: jax.vmap(jax.grad(log_prob), (None, 0), 
 
 if __name__ == "__main__":
     n, num_states = 4, 10
-    mask_fn, _, _ = make_autoregressive_sampler(None, n, num_states, mask_fn=True)
+    mask_fn, _, _ = make_autoregressive_sampler(None, None, n, num_states, mask_fn=True)
 
     state_idx = jnp.array([1, 4, 5, 7])
     mask = mask_fn(state_idx)

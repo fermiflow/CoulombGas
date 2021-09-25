@@ -45,9 +45,9 @@ def pretrain(van, params_van,
         beta = 1/ (4 * Theta)
 
     from orbitals import sp_orbitals
-    _, Es = sp_orbitals(dim, Emax)
+    sp_indices, Es = sp_orbitals(dim, Emax)
+    sp_indices = jnp.array(sp_indices[::-1])
     Es = (2*jnp.pi/L)**2 * jnp.array(Es[::-1])
-
 
     from mpmath import mpf, mp
     from freefermion.analytic import Z_E
@@ -56,7 +56,7 @@ def pretrain(van, params_van,
             "F: %s, E: %s, S: %s" % (mp.nstr(F), mp.nstr(E), mp.nstr(S)))
 
     num_states = Es.size
-    sampler, log_prob_novmap = make_autoregressive_sampler(van, n, num_states)
+    sampler, log_prob_novmap = make_autoregressive_sampler(van, sp_indices, n, num_states)
     log_prob = jax.vmap(log_prob_novmap, (None, 0), 0)
 
     loss_fn = make_loss(log_prob, Es, beta)

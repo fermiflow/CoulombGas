@@ -90,16 +90,16 @@ import haiku as hk
 from autoregressive import Transformer
 def forward_fn(state_idx):
     model = Transformer(num_states, args.nlayers, args.modelsize, args.nheads, args.nhidden)
-    return model(state_idx[..., None])
+    return model(state_idx)
 van = hk.transform(forward_fn)
-state_idx_dummy = jnp.arange(n, dtype=jnp.float64)
+state_idx_dummy = sp_indices[-n:].astype(jnp.float64)
 params_van = van.init(key, state_idx_dummy)
 
 raveled_params_van, _ = ravel_pytree(params_van)
 print("#parameters in the autoregressive model: %d" % raveled_params_van.size)
 
 from sampler import make_autoregressive_sampler, make_classical_score
-sampler, log_prob_novmap = make_autoregressive_sampler(van, n, num_states)
+sampler, log_prob_novmap = make_autoregressive_sampler(van, sp_indices, n, num_states)
 log_prob = jax.vmap(log_prob_novmap, (None, 0), 0)
 
 ####################################################################################
@@ -117,7 +117,7 @@ freefermion_path = args.folder + "freefermion/pretraining/" \
                     (args.nlayers, args.modelsize, args.nheads, args.nhidden) \
                 + ("_damping_%.5f_maxnorm_%.5f" % (pre_damping, pre_maxnorm)
                     if pre_sr else "_lr_%.3f" % pre_lr) \
-                + "_batch_%d_layernorm" % pre_batch
+                + "_batch_%d" % pre_batch
 
 import os
 if not os.path.isdir(freefermion_path):
