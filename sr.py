@@ -64,6 +64,27 @@ def hybrid_fisher_sr(classical_score_fn, quantum_score_fn, damping, max_norm):
     def init_fn(params):
         return HybridFisherSRState()
 
+    def fishers_fn(params_van, params_flow, state_indices, x):
+        classical_score = classical_score_fn(params_van, state_indices)
+        classical_score = jax.vmap(lambda pytree: ravel_pytree(pytree)[0])(classical_score)
+
+        quantum_score = quantum_score_fn(x, params_flow, state_indices)
+        quantum_score = jax.vmap(lambda pytree: ravel_pytree(pytree)[0])(quantum_score)
+        print("classical_score.shape:", classical_score.shape)
+        print("quantum_score.shape:", quantum_score.shape)
+        quantum_score_mean = jax.lax.pmean(quantum_score.mean(axis=0), axis_name="p")
+
+        batch_per_device = classical_score.shape[0]
+
+        classical_fisher = jax.lax.pmean(
+                    classical_score.T.dot(classical_score) / batch_per_device,
+                    axis_name="p")
+        quantum_fisher = jax.lax.pmean(
+                    quantum_score.conj().T.dot(quantum_score).real / batch_per_device,
+                    axis_name="p")
+
+        return classical_fisher, quantum_fisher, quantum_score_mean
+
     def update_fn(grads, state, params):
         """
             NOTE: as the computation of (classical and quantum) Fisher information
@@ -71,26 +92,15 @@ def hybrid_fisher_sr(classical_score_fn, quantum_score_fn, damping, max_norm):
         place them within the `params` argument.
         """
         grad_params_van, grad_params_flow = grads
-        params_van, params_flow, state_indices, x = params
+        classical_fisher, quantum_fisher, quantum_score_mean = params
+        quantum_fisher -= (quantum_score_mean.conj()[:, None] * quantum_score_mean).real
 
         grad_params_van_raveled, params_van_unravel_fn = ravel_pytree(grad_params_van)
         grad_params_flow_raveled, params_flow_unravel_fn = ravel_pytree(grad_params_flow)
         print("grad_params_van.shape:", grad_params_van_raveled.shape)
         print("grad_params_flow.shape:", grad_params_flow_raveled.shape)
 
-        classical_score = classical_score_fn(params_van, state_indices)
-        quantum_score = quantum_score_fn(x, params_flow, state_indices)
-        classical_score_raveled = jax.vmap(lambda pytree: ravel_pytree(pytree)[0])(classical_score)
-        quantum_score_raveled = jax.vmap(lambda pytree: ravel_pytree(pytree)[0])(quantum_score)
-        print("classical_score.shape:", classical_score_raveled.shape)
-        print("quantum_score.shape:", quantum_score_raveled.shape)
 
-        batch_per_device = classical_score_raveled.shape[0]
-
-
-        classical_fisher = jax.lax.pmean(
-                    classical_score_raveled.T.dot(classical_score_raveled) / batch_per_device,
-                    axis_name="p")
         classical_fisher += damping * jnp.eye(classical_fisher.shape[0])
         update_params_van_raveled = jax.scipy.linalg.solve(classical_fisher, grad_params_van_raveled)
         #scale gradient according to gradnorm
@@ -100,10 +110,6 @@ def hybrid_fisher_sr(classical_score_fn, quantum_score_fn, damping, max_norm):
         update_params_van = params_van_unravel_fn(update_params_van_raveled)
 
 
-        quantum_score_raveled -= jax.lax.pmean(quantum_score_raveled.mean(axis=0), axis_name="p")
-        quantum_fisher = jax.lax.pmean(
-                    quantum_score_raveled.conj().T.dot(quantum_score_raveled).real / batch_per_device,
-                    axis_name="p")
         quantum_fisher += damping * jnp.eye(quantum_fisher.shape[0])
         update_params_flow_raveled = jax.scipy.linalg.solve(quantum_fisher, grad_params_flow_raveled)
         #scale gradient according to gradnorm
@@ -115,4 +121,4 @@ def hybrid_fisher_sr(classical_score_fn, quantum_score_fn, damping, max_norm):
 
         return (update_params_van, update_params_flow), state
 
-    return base.GradientTransformation(init_fn, update_fn)
+    return fishers_fn, base.GradientTransformation(init_fn, update_fn)

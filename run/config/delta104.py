@@ -4,7 +4,7 @@ import time
 def submitjob(program, ngpus, jobname, run=False, wait=None):
     job="#!/bin/bash -l\n\n" \
         "#PBS -l nodes=1:ppn=1:gpus=%d\n" \
-        "#PBS -l walltime=24:00:00\n" \
+        "#PBS -l walltime=48:00:00\n" \
         "#PBS -o %s\n" \
         "#PBS -j oe\n" \
         "#PBS -V\n\n" \

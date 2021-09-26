@@ -19,15 +19,15 @@ if __name__=='__main__':
     ################################################################################
 
     # Parameters ###################################################################
-    n, dim, rs, Theta = 13, 2, 1.0, 0.15
+    n, dim, rs, Theta = 25, 2, 1.0, 0.15
     Emax = 25
     nlayers, modelsize, nheads, nhidden = 2, 16, 4, 32
     depth, spsize, tpsize = 2, 16, 16
     Gmax, kappa = 15, 10
     mc_therm, mc_steps, mc_stddev = 10, 50, 0.1
     lr = 1e-3
-    sr, damping, max_norm = False, 1e-3, 1e-3
-    batch, num_devices, epoch_finished, epoch = 4096, 8, 10000, 20000
+    sr, damping, max_norm = True, 1e-3, 1e-3
+    batch, num_devices, acc_steps, epoch_finished, epoch = 2048, 8, 4, 0, 3000
     ################################################################################
 
     program0 = 'python ../main.py'
@@ -35,7 +35,7 @@ if __name__=='__main__':
     # The folder for saving the (standard) output of the job.
     jobdir='../jobs/'
 
-    for rs in [1.0, 2.0, 3.0, 4.0, 5.0, 10.0]:
+    for rs in [10.0, 5.0, 3.0, 1.0]:
         jobid = input.waitfor 
 
         args = {"n": n, "dim": dim, "rs": rs, "Theta": Theta,
@@ -46,7 +46,7 @@ if __name__=='__main__':
                 "mc_therm": mc_therm, "mc_steps": mc_steps, "mc_stddev": mc_stddev,
                 "lr": lr,
                 "sr": sr, "damping": damping, "max_norm": max_norm,
-                "batch": batch, "num_devices": num_devices,
+                "batch": batch, "num_devices": num_devices, "acc_steps": acc_steps,
                 "epoch_finished": epoch_finished, "epoch": epoch
                 }
         jobname = jobdir 
