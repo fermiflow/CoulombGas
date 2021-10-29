@@ -4,11 +4,10 @@ import time
 def submitjob(program, ngpus, jobname, run=False, wait=None):
     job="#!/bin/bash -l\n\n" \
         "#PBS -l nodes=1:ppn=1:gpus=%d\n" \
-        "#PBS -l walltime=48:00:00\n" \
-        "#PBS -o %s\n" \
+        "#PBS -l walltime=240:00:00\n" \
         "#PBS -j oe\n" \
         "#PBS -V\n\n" \
-        % (ngpus, jobname + ".log")
+        % ngpus
 
     if wait is not None:
         dependency = "#PBS -W=afterok:%d\n" % wait

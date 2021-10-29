@@ -19,15 +19,15 @@ if __name__=='__main__':
     ################################################################################
 
     # Parameters ###################################################################
-    n, dim, rs, Theta = 25, 2, 1.0, 0.15
-    Emax = 25
+    n, dim, rs, Theta = 69, 2, 1.0, 0.15
+    Emax = 49
     nlayers, modelsize, nheads, nhidden = 2, 16, 4, 32
     depth, spsize, tpsize = 2, 16, 16
     Gmax, kappa = 15, 10
     mc_therm, mc_steps, mc_stddev = 10, 50, 0.1
     lr = 1e-3
     sr, damping, max_norm = True, 1e-3, 1e-3
-    batch, num_devices, acc_steps, epoch_finished, epoch = 2048, 8, 4, 0, 3000
+    batch, num_devices, acc_steps, epoch_finished, epoch = 256, 8, 32, 0, 1500
     ################################################################################
 
     program0 = 'python ../main.py'
@@ -35,7 +35,7 @@ if __name__=='__main__':
     # The folder for saving the (standard) output of the job.
     jobdir='../jobs/'
 
-    for rs in [10.0, 5.0, 3.0, 1.0]:
+    for rs in [10.0]:
         jobid = input.waitfor 
 
         args = {"n": n, "dim": dim, "rs": rs, "Theta": Theta,

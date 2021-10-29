@@ -136,7 +136,7 @@ else:
                           n, dim, args.Theta, args.Emax,
                           freefermion_path, key,
                           pre_lr, pre_sr, pre_damping, pre_maxnorm,
-                          pre_batch, epoch=10000)
+                          pre_batch, epoch=5000)
     print("Initialization done. Save the model to file: %s" % pretrained_model_filename)
     checkpoint.save_data(params_van, pretrained_model_filename)
 
