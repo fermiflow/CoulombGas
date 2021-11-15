@@ -40,6 +40,9 @@ parser.add_argument("--mc_therm", type=int, default=10, help="MCMC thermalizatio
 parser.add_argument("--mc_steps", type=int, default=50, help="MCMC update steps")
 parser.add_argument("--mc_stddev", type=float, default=0.1, help="standard deviation of the Gaussian proposal in MCMC update")
 
+# technical miscellaneous
+parser.add_argument("--hutchinson", action='store_true',  help="use Hutchinson's trick to compute the laplacian")
+
 # optimizer parameters.
 parser.add_argument("--lr", type=float, default=1e-3, help="learning rate (valid only for adam)")
 parser.add_argument("--sr", action='store_true',  help="use the second-order stochastic reconfiguration optimizer")
@@ -199,6 +202,7 @@ path = args.folder + "n_%d_dim_%d_rs_%f_Theta_%f" % (n, dim, args.rs, args.Theta
                       (args.depth, args.spsize, args.tpsize) \
                    + "_Gmax_%d_kappa_%d" % (args.Gmax, args.kappa) \
                    + "_mctherm_%d_mcsteps_%d_mcstddev_%.2f" % (args.mc_therm, args.mc_steps, args.mc_stddev) \
+                   + ("_hutchinson" if args.hutchinson else "") \
                    + ("_damping_%.5f_maxnorm_%.5f" % (args.damping, args.max_norm)
                         if args.sr else "_lr_%.3f" % args.lr) \
                    + "_batch_%d_ndevices_%d_accsteps_%d" % (args.batch, args.num_devices, args.acc_steps)
@@ -251,7 +255,8 @@ else:
 
 print("\n========== Training ==========")
 
-logpsi, logpsi_grad_laplacian = make_logpsi_grad_laplacian(logpsi_novmap)
+logpsi, logpsi_grad_laplacian = \
+        make_logpsi_grad_laplacian(logpsi_novmap, hutchinson=args.hutchinson)
 
 from VMC import make_loss
 observable_and_lossfn = make_loss(log_prob, logpsi, logpsi_grad_laplacian,
@@ -260,15 +265,15 @@ observable_and_lossfn = make_loss(log_prob, logpsi, logpsi_grad_laplacian,
 from functools import partial
 
 @partial(jax.pmap, axis_name="p",
-        in_axes=(0, 0, None, 0, 0, 0, 0, 0, 0, None) if args.sr else (0, 0, None, 0, 0, 0, None, None, None, None),
+        in_axes=(0, 0, None, 0, 0, 0, 0, 0, 0, 0, None) if args.sr else (0, 0, None, 0, 0, 0, None, None, None, None),
         out_axes=(0, 0, None, 0, 0, 0, 0, 0) if args.sr else (0, 0, None, 0, 0, None, None, None),
-        static_broadcasted_argnums=9 if args.sr else (6, 7, 8, 9),
+        static_broadcasted_argnums=10 if args.sr else (7, 8, 9, 10),
         donate_argnums=(3, 4))
-def update(params_van, params_flow, opt_state, state_indices, x, grads_acc,
+def update(params_van, params_flow, opt_state, state_indices, x, key, grads_acc,
         classical_fisher_acc, quantum_fisher_acc, quantum_score_mean_acc, final_step):
 
     data, classical_lossfn, quantum_lossfn = observable_and_lossfn(
-            params_van, params_flow, state_indices, x)
+            params_van, params_flow, state_indices, x, key)
 
     grad_params_van = jax.grad(classical_lossfn)(params_van)
     grad_params_flow = jax.grad(quantum_lossfn)(params_flow)
@@ -320,7 +325,7 @@ for i in range(args.epoch_finished + 1, args.epoch + 1):
 
         params_van, params_flow, opt_state, data, grads_acc, \
         classical_fisher_acc, quantum_fisher_acc, quantum_score_mean_acc \
-            = update(params_van, params_flow, opt_state, state_indices, x, grads_acc,
+            = update(params_van, params_flow, opt_state, state_indices, x, keys, grads_acc,
                      classical_fisher_acc, quantum_fisher_acc, quantum_score_mean_acc, final_step)
 
         data = jax.tree_map(lambda x: x[0], data)

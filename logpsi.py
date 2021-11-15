@@ -34,15 +34,15 @@ def make_logpsi(flow, sp_indices, L):
 
     return logpsi
 
-def make_logpsi_grad_laplacian(logpsi, forloop=True, key=None):
+def make_logpsi_grad_laplacian(logpsi, forloop=True, hutchinson=False):
 
     @partial(jax.vmap, in_axes=(0, None, 0), out_axes=0)
     def logpsi_vmapped(x, params, state_idx):
         logpsix = logpsi(x, params, state_idx)
         return logpsix[0] + 1j * logpsix[1]
 
-    @partial(jax.vmap, in_axes=(0, None, 0), out_axes=0)
-    def logpsi_grad_laplacian(x, params, state_idx):
+    @partial(jax.vmap, in_axes=(0, None, 0, None), out_axes=0)
+    def logpsi_grad_laplacian(x, params, state_idx, key):
         """
             Computes the gradient and laplacian of logpsi w.r.t. electron coordinates x.
         The final result is in complex form.
@@ -86,7 +86,7 @@ def make_logpsi_grad_laplacian(logpsi, forloop=True, key=None):
 
         return grad, laplacian
 
-    def logpsi_grad_laplacian_hutchinson(x, params, state_indices):
+    def logpsi_grad_laplacian_hutchinson(x, params, state_indices, key):
 
         v = jax.random.normal(key, x.shape)
 
@@ -115,7 +115,7 @@ def make_logpsi_grad_laplacian(logpsi, forloop=True, key=None):
         return logpsi_grad_random_laplacian(x, params, state_indices, v)
 
     return logpsi_vmapped, \
-           (logpsi_grad_laplacian_hutchinson if key is not None else logpsi_grad_laplacian)
+           (logpsi_grad_laplacian_hutchinson if hutchinson else logpsi_grad_laplacian)
 
 def make_logp(logpsi):
 

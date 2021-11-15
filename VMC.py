@@ -32,9 +32,9 @@ from potential import potential_energy
 
 def make_loss(log_prob, logpsi, logpsi_grad_laplacian, kappa, G, L, rs, Vconst, beta):
 
-    def observable_and_lossfn(params_van, params_flow, state_indices, x):
+    def observable_and_lossfn(params_van, params_flow, state_indices, x, key):
         logp_states = log_prob(params_van, state_indices)
-        grad, laplacian = logpsi_grad_laplacian(x, params_flow, state_indices)
+        grad, laplacian = logpsi_grad_laplacian(x, params_flow, state_indices, key)
         print("grad.shape:", grad.shape)
         print("laplacian.shape:", laplacian.shape)
 
