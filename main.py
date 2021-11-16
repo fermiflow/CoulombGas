@@ -158,8 +158,10 @@ params_flow = flow.init(key, x_dummy)
 raveled_params_flow, _ = ravel_pytree(params_flow)
 print("#parameters in the flow model: %d" % raveled_params_flow.size)
 
-from logpsi import make_logpsi, make_logpsi_grad_laplacian, make_logp, make_quantum_score
+from logpsi import make_logpsi, make_logphi_logjacdet, make_logpsi_grad_laplacian, \
+                   make_logp, make_quantum_score
 logpsi_novmap = make_logpsi(flow, sp_indices, L)
+logphi, logjacdet = make_logphi_logjacdet(flow, sp_indices, L)
 logp = make_logp(logpsi_novmap)
 
 ####################################################################################
@@ -256,7 +258,8 @@ else:
 print("\n========== Training ==========")
 
 logpsi, logpsi_grad_laplacian = \
-        make_logpsi_grad_laplacian(logpsi_novmap, hutchinson=args.hutchinson)
+        make_logpsi_grad_laplacian(logpsi_novmap, hutchinson=args.hutchinson,
+                                   logphi=logphi, logjacdet=logjacdet)
 
 from VMC import make_loss
 observable_and_lossfn = make_loss(log_prob, logpsi, logpsi_grad_laplacian,

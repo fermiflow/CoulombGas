@@ -34,7 +34,28 @@ def make_logpsi(flow, sp_indices, L):
 
     return logpsi
 
-def make_logpsi_grad_laplacian(logpsi, forloop=True, hutchinson=False):
+def make_logphi_logjacdet(flow, sp_indices, L):
+    """
+        The same functionality as `make_logpsi`, but the two terms involving the base
+    wavefunction and the jacobian determinant are separated.
+    """
+    def logphi(x, params, state_idx):
+        z = flow.apply(params, None, x)
+        log_phi = logslaterdet(sp_indices[state_idx], z, L)
+        return jnp.stack([log_phi.real, log_phi.imag])
+
+    def logjacdet(x, params):
+        n, dim = x.shape
+        x_flatten = x.reshape(-1)
+        flow_flatten = lambda x: flow.apply(params, None, x.reshape(n, dim)).reshape(-1)
+        jac = jax.jacfwd(flow_flatten)(x_flatten)
+        _, logjacdet = jnp.linalg.slogdet(jac)
+        return 0.5*logjacdet
+
+    return logphi, logjacdet
+
+def make_logpsi_grad_laplacian(logpsi, forloop=True, hutchinson=False,
+                               logphi=None, logjacdet=None):
 
     @partial(jax.vmap, in_axes=(0, None, 0), out_axes=0)
     def logpsi_vmapped(x, params, state_idx):
@@ -112,7 +133,42 @@ def make_logpsi_grad_laplacian(logpsi, forloop=True, hutchinson=False):
 
             return grad, random_laplacian
 
-        return logpsi_grad_random_laplacian(x, params, state_indices, v)
+        @partial(jax.vmap, in_axes=(0, None, 0, 0), out_axes=0)
+        def logpsi_grad_random_logjacdet(x, params, state_idx, v):
+            grad_logphi = jax.jacrev(logphi)(x, params, state_idx)
+            grad_logphi = grad_logphi[0] + 1j * grad_logphi[1]
+            grad_logjacdet, hvp = jax.jvp( jax.grad(lambda x: logjacdet(x, params)),
+                                 (x,), (v,) )
+            grad = grad_logphi + grad_logjacdet
+            print("Computed gradient.")
+
+            n, dim = x.shape
+            x_flatten = x.reshape(-1)
+            grad_logphi = jax.jacrev(lambda x: logphi(x.reshape(n, dim), params, state_idx))
+
+            def _laplacian(x):
+                if forloop:
+                    print("forloop version...")
+                    def body_fun(i, val):
+                        _, tangent = jax.jvp(grad_logphi, (x,), (eye[i],))
+                        return val + tangent[0, i] + 1j * tangent[1, i]
+                    eye = jnp.eye(x.shape[0])
+                    laplacian = jax.lax.fori_loop(0, x.shape[0], body_fun, 0.+0.j)
+                return laplacian
+
+            laplacian_logphi = _laplacian(x_flatten)
+            print("Computed exact laplacian of logphi.")
+
+            random_logjacdet = (hvp * v).sum(axis=(-2, -1))
+            print("Computed Hutchinson's estimator of logjacdet.")
+            laplacian = laplacian_logphi + random_logjacdet
+
+            return grad, laplacian
+
+        logpsi_grad_laplacian = logpsi_grad_random_laplacian \
+                                if (logphi is None and logjacdet is None) else \
+                                logpsi_grad_random_logjacdet
+        return logpsi_grad_laplacian(x, params, state_indices, v)
 
     return logpsi_vmapped, \
            (logpsi_grad_laplacian_hutchinson if hutchinson else logpsi_grad_laplacian)

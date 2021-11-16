@@ -19,15 +19,16 @@ if __name__=='__main__':
     ################################################################################
 
     # Parameters ###################################################################
-    n, dim, rs, Theta = 69, 2, 1.0, 0.15
-    Emax = 49
+    n, dim, rs, Theta = 49, 2, 1.0, 0.15
+    Emax = 36
     nlayers, modelsize, nheads, nhidden = 2, 16, 4, 32
     depth, spsize, tpsize = 2, 16, 16
     Gmax, kappa = 15, 10
     mc_therm, mc_steps, mc_stddev = 10, 50, 0.1
+    hutchinson = True
     lr = 1e-3
     sr, damping, max_norm = True, 1e-3, 1e-3
-    batch, num_devices, acc_steps, epoch_finished, epoch = 256, 8, 32, 0, 1500
+    batch, num_devices, acc_steps, epoch_finished, epoch = 512, 8, 16, 0, 3000
     ################################################################################
 
     program0 = 'python ../main.py'
@@ -44,6 +45,7 @@ if __name__=='__main__':
                 "depth": depth, "spsize": spsize, "tpsize": tpsize,
                 "Gmax": Gmax, "kappa": kappa,
                 "mc_therm": mc_therm, "mc_steps": mc_steps, "mc_stddev": mc_stddev,
+                "hutchinson": hutchinson,
                 "lr": lr,
                 "sr": sr, "damping": damping, "max_norm": max_norm,
                 "batch": batch, "num_devices": num_devices, "acc_steps": acc_steps,
@@ -53,8 +55,8 @@ if __name__=='__main__':
         program = program0
         for param, value in args.items():
             jobname += "%s_%s_" % (param, value)
-            if param == "sr":
-                program += (" --sr" if value else "")
+            if isinstance(value, bool):
+                program += (" --%s" % param if value else "")
             else:
                 program += " --%s %s" % (param, value)
         jobname = jobname[:-1] 
