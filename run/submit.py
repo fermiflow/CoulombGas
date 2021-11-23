@@ -19,12 +19,12 @@ if __name__=='__main__':
     ################################################################################
 
     # Parameters ###################################################################
-    n, dim, rs, Theta = 49, 2, 1.0, 0.15
-    Emax = 36
+    n, dim, rs, Theta = 57, 2, 1.0, 0.15
+    Emax = 49
     nlayers, modelsize, nheads, nhidden = 2, 16, 4, 32
     depth, spsize, tpsize = 2, 16, 16
     Gmax, kappa = 15, 10
-    mc_therm, mc_steps, mc_stddev = 10, 50, 0.1
+    mc_therm, mc_steps, mc_stddev = 10, 100, 0.1
     hutchinson = True
     lr = 1e-3
     sr, damping, max_norm = True, 1e-3, 1e-3

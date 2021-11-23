@@ -22,9 +22,9 @@ def sample_stateindices_and_x(key,
     key, key_state, key_MCMC = jax.random.split(key, 3)
     batch = x.shape[0]
     state_indices = sampler(params_van, key_state, batch)
-    x = mcmc(lambda x: logp(x, params_flow, state_indices), x, key_MCMC, mc_steps, mc_stddev)
+    x, accept_rate = mcmc(lambda x: logp(x, params_flow, state_indices), x, key_MCMC, mc_steps, mc_stddev)
     x -= L * jnp.floor(x/L)
-    return key, state_indices, x
+    return key, state_indices, x, accept_rate
 
 ####################################################################################
 

@@ -246,7 +246,7 @@ else:
 
     for i in range(args.mc_therm):
         print("---- thermal step %d ----" % (i+1))
-        keys, _, x = sample_stateindices_and_x(keys,
+        keys, _, x, accept_rate = sample_stateindices_and_x(keys,
                                    sampler, params_van,
                                    logp, x, params_flow,
                                    args.mc_steps, args.mc_stddev, L)
@@ -318,12 +318,14 @@ for i in range(args.epoch_finished + 1, args.epoch + 1):
         quantum_score_mean_acc = replicate(quantum_score_mean_acc, num_devices)
     else:
         classical_fisher_acc = quantum_fisher_acc = quantum_score_mean_acc = None
+    accept_rate_acc = shard(jnp.zeros(num_devices))
 
     for acc in range(args.acc_steps):
-        keys, state_indices, x = sample_stateindices_and_x(keys,
+        keys, state_indices, x, accept_rate = sample_stateindices_and_x(keys,
                                                sampler, params_van,
                                                logp, x, params_flow,
                                                args.mc_steps, args.mc_stddev, L)
+        accept_rate_acc += accept_rate
         final_step = (acc == args.acc_steps - 1)
 
         params_van, params_flow, opt_state, data, grads_acc, \
@@ -337,6 +339,7 @@ for i in range(args.epoch_finished + 1, args.epoch + 1):
         else:
             data_acc = jax.tree_multimap(lambda acc, i: acc + i, data_acc, data)
 
+    accept_rate = accept_rate_acc[0] / args.acc_steps
     data = jax.tree_map(lambda acc: acc / args.acc_steps, data_acc)
     K, K2_mean, V, V2_mean, E, E2_mean, F, F2_mean, S, S2_mean = \
             data["K_mean"], data["K2_mean"], data["V_mean"], data["V2_mean"], \
@@ -354,12 +357,14 @@ for i in range(args.epoch_finished + 1, args.epoch + 1):
             "E:", E/args.rs**2, "E_std:", E_std/args.rs**2,
             "K:", K/args.rs**2, "K_std:", K_std/args.rs**2,
             "V:", V/args.rs**2, "V_std:", V_std/args.rs**2,
-            "S:", S, "S_std:", S_std)
-    f.write( ("%6d" + "  %.6f"*10 + "\n") % (i, F/args.rs**2, F_std/args.rs**2,
+            "S:", S, "S_std:", S_std,
+            "accept_rate:", accept_rate)
+    f.write( ("%6d" + "  %.6f"*10 + "  %.4f" + "\n") % (i,
+                                                F/args.rs**2, F_std/args.rs**2,
                                                 E/args.rs**2, E_std/args.rs**2,
                                                 K/args.rs**2, K_std/args.rs**2,
                                                 V/args.rs**2, V_std/args.rs**2,
-                                                S, S_std) )
+                                                S, S_std, accept_rate) )
 
     if i % 100 == 0:
         ckpt = {"keys": keys, "x": x,

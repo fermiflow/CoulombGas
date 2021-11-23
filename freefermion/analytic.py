@@ -130,6 +130,12 @@ if __name__ == "__main__":
         F, E, S = Z_E(n, dim, Theta, Emax=Emax)
         print("Emax:", Emax, "\nF:", F, "\nE:", E, "\nS:", S)
 
+    n, dim, Theta = 57, 2, mpf("0.15")
+    print("---- n = %d, dim = %d, Theta = %s ----" % (n, dim, mp.nstr(Theta)))
+    for Emax in [49, 64, None]:
+        F, E, S = Z_E(n, dim, Theta, Emax=Emax)
+        print("Emax:", Emax, "\nF:", F, "\nE:", E, "\nS:", S)
+
     n, dim, Theta = 69, 2, mpf("0.15")
     print("---- n = %d, dim = %d, Theta = %s ----" % (n, dim, mp.nstr(Theta)))
     for Emax in [49, 64, None]:
