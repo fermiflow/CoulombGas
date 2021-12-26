@@ -8,6 +8,8 @@ import haiku as hk
 from orbitals import sp_orbitals
 from logpsi import make_logpsi, make_logpsi_grad_laplacian, make_logp
 
+key = jax.random.PRNGKey(42)
+
 def fermiflow(depth, spsize, tpsize, L, n, dim):
     from flow import FermiNet
     def flow_fn(x):
@@ -16,7 +18,7 @@ def fermiflow(depth, spsize, tpsize, L, n, dim):
     flow = hk.transform(flow_fn)
 
     x = jnp.array( np.random.uniform(0., L, (n, dim)) )
-    params = flow.init(jax.random.PRNGKey(42), x)
+    params = flow.init(key, x)
     return flow, x, params
 
 """
@@ -84,7 +86,7 @@ def test_kinetic_energy():
 
     identity = hk.transform(lambda x: x)
     x = jnp.array( np.random.uniform(0., L, (n, dim)) )
-    params = identity.init(jax.random.PRNGKey(42), x)
+    params = identity.init(key, x)
 
     sp_indices = jnp.array( sp_orbitals(dim)[0] )
     state_idx = jnp.array( np.random.choice(sp_indices.shape[0], size=n, replace=False))
@@ -92,7 +94,7 @@ def test_kinetic_energy():
 
     logpsi = make_logpsi(identity, sp_indices, L)
     _, logpsi_grad_laplacian = make_logpsi_grad_laplacian(logpsi)
-    grad, laplacian = logpsi_grad_laplacian(x[None, ...], params, state_idx[None, ...])
+    grad, laplacian = logpsi_grad_laplacian(x[None, ...], params, state_idx[None, ...], key)
     assert grad.shape == (1, n, dim)
     assert laplacian.shape == (1,)
 
@@ -115,8 +117,8 @@ def test_laplacian():
     logpsi = make_logpsi(flow, sp_indices, L)
     _, logpsi_grad_laplacian1 = make_logpsi_grad_laplacian(logpsi)
     _, logpsi_grad_laplacian2 = make_logpsi_grad_laplacian(logpsi, forloop=False)
-    grad1, laplacian1 = logpsi_grad_laplacian1(x[None, ...], params, state_idx[None, ...])
-    grad2, laplacian2 = logpsi_grad_laplacian2(x[None, ...], params, state_idx[None, ...])
+    grad1, laplacian1 = logpsi_grad_laplacian1(x[None, ...], params, state_idx[None, ...], key)
+    grad2, laplacian2 = logpsi_grad_laplacian2(x[None, ...], params, state_idx[None, ...], key)
     assert jnp.allclose(grad1, grad2)
     assert jnp.allclose(laplacian1, laplacian2)
 
@@ -133,16 +135,15 @@ def test_laplacian_hutchinson():
     state_idx = jnp.array( np.random.choice(sp_indices.shape[0], size=n, replace=False))
     print("indices:\n", sp_indices[state_idx])
 
-    batch = 40000
+    batch = 4000
 
     logpsi = make_logpsi(flow, sp_indices, L)
     logpsi_grad_laplacian = jax.jit(make_logpsi_grad_laplacian(logpsi)[1])
-    grad, laplacian = logpsi_grad_laplacian(x[None, ...], params, state_idx[None, ...])
+    grad, laplacian = logpsi_grad_laplacian(x[None, ...], params, state_idx[None, ...], key)
 
-    key = jax.random.PRNGKey(42)
-    logpsi_grad_laplacian2 = jax.jit(make_logpsi_grad_laplacian(logpsi, key=key)[1])
+    logpsi_grad_laplacian2 = jax.jit(make_logpsi_grad_laplacian(logpsi, hutchinson=True)[1])
     grad2, random_laplacian2 = logpsi_grad_laplacian2(
-            jnp.tile(x, (batch, 1, 1)), params, jnp.stack([state_idx]*batch))
+            jnp.tile(x, (batch, 1, 1)), params, jnp.stack([state_idx]*batch), key)
     laplacian2_mean = random_laplacian2.mean()
     laplacian2_std = random_laplacian2.std() / jnp.sqrt(batch)
 
