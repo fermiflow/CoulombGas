@@ -1,0 +1,15 @@
+language: python
+python:
+  - "3.8"
+  - "3.9"
+# command to install dependencies
+install:
+  - pip install --upgrade pip
+  - pip install --upgrade "jax[cpu]"
+  - pip install git+https://github.com/deepmind/dm-haiku
+  - pip install mpmath
+before_script:
+  - export PYTHONPATH="/home/travis/build/fermiflow/CoulombGas"
+# command to run tests
+script:
+  - pytest
