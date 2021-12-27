@@ -70,54 +70,6 @@ def Z_E(n, dim, Theta, Emax=None):
     return F, E, S
 
 if __name__ == "__main__":
-    """
-    import os
-
-    Thetas = mp.linspace(mpf("0.02"), mpf("0.6"), 59)
-    dim = 2
-    ns = [13, 25, 37, 49, 61, 69, 81, 89, 97]
-    path = "/data1/xieh/CoulombGas/master/freefermion/analytic"
-
-    for n in ns:
-        print("n = %d" % n)
-        filename = os.path.join(path, "n_%d_dim_%d.txt" % (n, dim))
-        if os.path.isfile(filename):
-            print("The freefermion data file %s already exists. Skip..." % filename)
-            continue
-        fp = open(filename, "w", buffering=1, newline="\n")
-        fp.write("#Theta\tf\te\ts\n")
-        for i, Theta in enumerate(Thetas):
-            F, E, S = Z_E(n, dim, Theta)
-            f, e, s = F/n, E/n, S/n
-            fp.write( ("%s" + "\t%s"*3 + "\n") %
-                        (mp.nstr(Theta),
-                         mp.nstr(f), mp.nstr(e), mp.nstr(s)) )
-            print("Theta: %s\tf: %s\te: %s\ts: %s" %
-                        (mp.nstr(Theta),
-                         mp.nstr(f), mp.nstr(e), mp.nstr(s)))
-        fp.close()
-
-
-    ns = [13, 21, 25, 29, 37, 45, 49, 57, 61, 69, 81, 89, 97, 101, 109, 113, 121]
-    entropies = []
-    theta = 0.15
-    dim, Theta = 2, mpf(str(theta))
-
-    filename = os.path.join(path, "dim_%d_theta_%s.txt" % (dim, theta))
-    if os.path.isfile(filename):
-        print("The freefermion data file %s already exists. Skip..." % filename)
-    else:
-        fp = open(filename, "w", buffering=1, newline="\n")
-        fp.write("#n\ts\n")
-        for n in ns:
-            F, E, S = Z_E(n, dim, Theta)
-            f, e, s = F/n, E/n, S/n
-            entropies.append(float(mp.nstr(s)))
-            fp.write("%3d\t%s\n" % (n, mp.nstr(s)))
-            print("%3d\t%s" % (n, mp.nstr(s)))
-        fp.close()
-
-    """
     n, dim, Theta = 37, 2, mpf("0.15")
     print("---- n = %d, dim = %d, Theta = %s ----" % (n, dim, mp.nstr(Theta)))
     for Emax in [25, 36, None]:
@@ -131,12 +83,6 @@ if __name__ == "__main__":
         print("Emax:", Emax, "\nF:", F, "\nE:", E, "\nS:", S)
 
     n, dim, Theta = 57, 2, mpf("0.15")
-    print("---- n = %d, dim = %d, Theta = %s ----" % (n, dim, mp.nstr(Theta)))
-    for Emax in [49, 64, None]:
-        F, E, S = Z_E(n, dim, Theta, Emax=Emax)
-        print("Emax:", Emax, "\nF:", F, "\nE:", E, "\nS:", S)
-
-    n, dim, Theta = 69, 2, mpf("0.15")
     print("---- n = %d, dim = %d, Theta = %s ----" % (n, dim, mp.nstr(Theta)))
     for Emax in [49, 64, None]:
         F, E, S = Z_E(n, dim, Theta, Emax=Emax)

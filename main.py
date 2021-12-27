@@ -10,7 +10,7 @@ key = jax.random.PRNGKey(42)
 import argparse
 parser = argparse.ArgumentParser(description="Finite-temperature VMC for the homogeneous electron gas")
 
-parser.add_argument("--folder", default="/data1/xieh/CoulombGas/master/", help="the folder to save data")
+parser.add_argument("--folder", default="data/", help="the folder to save data")
 
 # physical parameters.
 parser.add_argument("--n", type=int, default=29, help="total number of electrons")
