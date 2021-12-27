@@ -1,3 +1,11 @@
+"""
+    Autoregressive model of momenta occupation with fixed particle number.
+
+    The present implementation is based on a Transformer composed of causal self-attention layers.
+
+    Adapted from https://github.com/deepmind/dm-haiku/blob/main/examples/transformer/model.py
+"""
+
 import jax
 from jax.config import config
 config.update("jax_enable_x64", True)

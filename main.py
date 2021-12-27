@@ -8,31 +8,30 @@ print("jax.__version__:", jax.__version__)
 key = jax.random.PRNGKey(42)
 
 import argparse
-parser = argparse.ArgumentParser(description="Finite-temperature VMC for homogeneous electron gas")
+parser = argparse.ArgumentParser(description="Finite-temperature VMC for the homogeneous electron gas")
 
 parser.add_argument("--folder", default="/data1/xieh/CoulombGas/master/", help="the folder to save data")
 
 # physical parameters.
-parser.add_argument("--n", type=int, default=13, help="total number of electrons")
+parser.add_argument("--n", type=int, default=29, help="total number of electrons")
 parser.add_argument("--dim", type=int, default=2, help="spatial dimension")
-parser.add_argument("--rs", type=float, default=1.0, help="rs")
-parser.add_argument("--Theta", type=float, default=0.05, help="dimensionless temperature T/Ef")
+parser.add_argument("--rs", type=float, default=10.0, help="rs")
+parser.add_argument("--Theta", type=float, default=0.15, help="dimensionless temperature T/Ef")
 
 # many-body state distribution: autoregressive transformer.
 parser.add_argument("--Emax", type=int, default=25, help="energy cutoff for the single-particle orbitals")
-parser.add_argument("--nlayers", type=int, default=2, help="number of layers")
-parser.add_argument("--modelsize", type=int, default=16, help="model size")
-parser.add_argument("--nheads", type=int, default=4, help="number of heads")
-parser.add_argument("--nhidden", type=int, default=32, help="number of hidden dimension of the MLP within transformer layers")
+parser.add_argument("--nlayers", type=int, default=2, help="CausalTransformer: number of layers")
+parser.add_argument("--modelsize", type=int, default=16, help="CausalTransformer: embedding dimension")
+parser.add_argument("--nheads", type=int, default=4, help="CausalTransformer:number of heads")
+parser.add_argument("--nhidden", type=int, default=32, help="CausalTransformer: number of hidden units of the MLP within each layer")
 
 # normalizing flow.
-#parser.add_argument("--steps", type=int, default=2, help="FermiNet: steps")
-parser.add_argument("--depth", type=int, default=2, help="FermiNet: depth")
-parser.add_argument("--spsize", type=int, default=16, help="FermiNet: spsize")
-parser.add_argument("--tpsize", type=int, default=16, help="FermiNet: tpsize")
+parser.add_argument("--depth", type=int, default=2, help="FermiNet: network depth")
+parser.add_argument("--spsize", type=int, default=16, help="FermiNet: single-particle feature size")
+parser.add_argument("--tpsize", type=int, default=16, help="FermiNet: two-particle feature size")
 
 # parameters relevant to th Ewald summation of Coulomb interaction.
-parser.add_argument("--Gmax", type=int, default=15, help="k-space cutoff in the ewald summation of Coulomb potential")
+parser.add_argument("--Gmax", type=int, default=15, help="k-space cutoff in the Ewald summation of Coulomb potential")
 parser.add_argument("--kappa", type=int, default=10, help="screening parameter (in unit of 1/L) in Ewald summation")
 
 # MCMC.
@@ -48,14 +47,13 @@ parser.add_argument("--lr", type=float, default=1e-3, help="learning rate (valid
 parser.add_argument("--sr", action='store_true',  help="use the second-order stochastic reconfiguration optimizer")
 parser.add_argument("--damping", type=float, default=1e-3, help="damping")
 parser.add_argument("--max_norm", type=float, default=1e-3, help="gradnorm maximum")
-#parser.add_argument("--use_sparse_solver", action='store_true',  help="")
 
 # training parameters.
 parser.add_argument("--batch", type=int, default=2048, help="batch size (per single gradient accumulation step)")
 parser.add_argument("--num_devices", type=int, default=8, help="number of GPU devices")
-parser.add_argument("--acc_steps", type=int, default=1, help="gradient accumulation steps")
+parser.add_argument("--acc_steps", type=int, default=4, help="gradient accumulation steps")
 parser.add_argument("--epoch_finished", type=int, default=0, help="number of epochs already finished")
-parser.add_argument("--epoch", type=int, default=10000, help="final epoch")
+parser.add_argument("--epoch", type=int, default=3000, help="final epoch")
 
 args = parser.parse_args()
 

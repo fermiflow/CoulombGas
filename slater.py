@@ -20,8 +20,6 @@ def logslaterdet0(indices, x, L):
     phase, logabsdet = jnp.linalg.slogdet(D)
     return logabsdet + jnp.log(phase)
 
-#from functools import partial
-#logslaterdet = partial(jax.custom_jvp, nondiff_argnums=(0, 2))(logslaterdet0)
 logslaterdet = jax.custom_jvp(logslaterdet0)
 
 @logslaterdet.defjvp
