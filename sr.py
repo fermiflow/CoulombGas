@@ -3,8 +3,6 @@
     The design of API signatures is in parallel with the package `optax`.
 """
 import jax
-from jax.config import config
-config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 from jax.flatten_util import ravel_pytree
 

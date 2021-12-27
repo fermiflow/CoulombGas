@@ -1,6 +1,4 @@
 import jax
-from jax.config import config
-config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 from functools import partial
@@ -73,6 +71,9 @@ make_classical_score = lambda log_prob: jax.vmap(jax.grad(log_prob), (None, 0), 
 
 
 if __name__ == "__main__":
+    from jax.config import config
+    config.update("jax_enable_x64", True)
+
     n, num_states = 4, 10
     mask_fn, _, _ = make_autoregressive_sampler(None, None, n, num_states, mask_fn=True)
 

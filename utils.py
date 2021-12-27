@@ -1,6 +1,4 @@
 import jax
-from jax.config import config
-config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 shard = jax.pmap(lambda x: x)
@@ -10,6 +8,8 @@ def replicate(pytree, num_devices):
     return shard(stacked_pytree)
 
 if __name__ == "__main__":
+    from jax.config import config
+    config.update("jax_enable_x64", True)
     import numpy as np
 
     num_devices = 2
