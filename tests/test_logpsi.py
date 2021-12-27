@@ -47,7 +47,8 @@ def test_logpsi():
     print("---- Test permutation invariance: Psi_n(Px) = +/- Psi_n(x) ----")
     P = np.random.permutation(n)
     logpsix_P = logpsi(x[P, :], params, state_idx)
-    psix_P, psix = jnp.exp(logpsix_P), jnp.exp(logpsix)
+    psix_P, psix = jnp.exp(logpsix_P[0] + 1j * logpsix_P[1]), \
+                   jnp.exp(logpsix[0] + 1j *logpsix[1])
     print("psix:", psix)
     print("psix_P:", psix_P)
     assert jnp.allclose(psix_P, psix) or jnp.allclose(psix_P, -psix)

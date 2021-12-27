@@ -16,7 +16,7 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
-      - name: set PYTHONPATH`
+      - name: set PYTHONPATH
         run: |
           echo "PYTHONPATH=/home/runner/work/CoulombGas/CoulombGas" >> $GITHUB_ENV
       - name: Install dependencies
