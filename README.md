@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/fermiflow/CoulombGas/actions/workflows/tests.yml/badge.svg)](https://github.com/fermiflow/CoulombGas/actions)
 
-This code implements the neural canonical transformation approach to the thermodynamic properties of uniform electron gas. Building on [JAX](https://github.com/google/jax), it utilizes (both forward- and backwark-mode) automatic differentiation and the [pmap](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap) mechanism to achieve a large-scale single-program multiple-data (SPMD) training on multiple GPUs.
+This code implements the neural canonical transformation approach to the thermodynamic properties of uniform electron gas. Building on [JAX](https://github.com/google/jax), it utilizes (both forward- and reverse-mode) automatic differentiation and the [pmap](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap) mechanism to achieve a large-scale single-program multiple-data (SPMD) training on multiple GPUs.
 
 ## Requirements
 
