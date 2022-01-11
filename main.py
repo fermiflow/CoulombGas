@@ -374,15 +374,4 @@ for i in range(args.epoch_finished + 1, args.epoch + 1):
         checkpoint.save_data(ckpt, save_ckpt_filename)
         print("Save checkpoint file: %s" % save_ckpt_filename)
 
-    """
-    logpsi_real = logpsi.real.reshape(-1)
-    Eloc_real = Eloc_real.reshape(-1)
-    print("Eloc_real max: (%f, %d)" % (Eloc_real.max(), Eloc_real.argmax()),
-          "min: (%f, %d)" % (Eloc_real.min(), Eloc_real.argmin()),
-          "mean:", Eloc_real.mean(), "std:", Eloc_real.std())
-    print("logpsi_real max: (%f, %d)" % (logpsi_real.max(), logpsi_real.argmax()),
-          "min: (%f, %d)" % (logpsi_real.min(), logpsi_real.argmin()),
-          "mean:", logpsi_real.mean(), "std:", logpsi_real.std())
-    """
-
 f.close()
