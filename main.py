@@ -266,7 +266,7 @@ observable_and_lossfn = make_loss(log_prob, logpsi, logpsi_grad_laplacian,
 from functools import partial
 
 @partial(jax.pmap, axis_name="p",
-        in_axes=(0, 0, None, 0, 0, 0, 0, 0, 0, 0, None) if args.sr else (0, 0, None, 0, 0, 0, None, None, None, None),
+        in_axes=(0, 0, None, 0, 0, 0, 0, 0, 0, 0, None) if args.sr else (0, 0, None, 0, 0, 0, 0, None, None, None),
         out_axes=(0, 0, None, 0, 0, 0, 0, 0) if args.sr else (0, 0, None, 0, 0, None, None, None),
         static_broadcasted_argnums=10 if args.sr else (7, 8, 9, 10),
         donate_argnums=(3, 4))
