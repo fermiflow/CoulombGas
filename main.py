@@ -308,12 +308,9 @@ for i in range(args.epoch_finished + 1, args.epoch + 1):
     grads_acc = jax.tree_map(jnp.zeros_like, (params_van, params_flow))
     grads_acc = shard(grads_acc)
     if args.sr:
-        classical_fisher_acc = jnp.zeros((raveled_params_van.size, raveled_params_van.size))
-        classical_fisher_acc = replicate(classical_fisher_acc, num_devices)
-        quantum_fisher_acc = jnp.zeros((raveled_params_flow.size, raveled_params_flow.size))
-        quantum_fisher_acc = replicate(quantum_fisher_acc, num_devices)
-        quantum_score_mean_acc = jnp.zeros(raveled_params_flow.size)
-        quantum_score_mean_acc = replicate(quantum_score_mean_acc, num_devices)
+        classical_fisher_acc = replicate(jnp.zeros((raveled_params_van.size, raveled_params_van.size)), num_devices)
+        quantum_fisher_acc = replicate(jnp.zeros((raveled_params_flow.size, raveled_params_flow.size)), num_devices)
+        quantum_score_mean_acc = replicate(jnp.zeros(raveled_params_flow.size), num_devices)
     else:
         classical_fisher_acc = quantum_fisher_acc = quantum_score_mean_acc = None
     accept_rate_acc = shard(jnp.zeros(num_devices))
