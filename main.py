@@ -10,7 +10,7 @@ key = jax.random.PRNGKey(42)
 import argparse
 parser = argparse.ArgumentParser(description="Finite-temperature VMC for the homogeneous electron gas")
 
-parser.add_argument("--folder", default="data/", help="the folder to save data")
+parser.add_argument("--folder", default="/data/xiehao/CoulombGas/master/", help="the folder to save data")
 
 # physical parameters.
 parser.add_argument("--n", type=int, default=29, help="total number of electrons")
@@ -266,21 +266,26 @@ observable_and_lossfn = make_loss(log_prob, logpsi, logpsi_grad_laplacian,
 from functools import partial
 
 @partial(jax.pmap, axis_name="p",
-        in_axes=(0, 0, None, 0, 0, 0, 0, 0, 0, 0, None) if args.sr else (0, 0, None, 0, 0, 0, 0, None, None, None),
-        out_axes=(0, 0, None, 0, 0, 0, 0, 0) if args.sr else (0, 0, None, 0, 0, None, None, None),
-        static_broadcasted_argnums=10 if args.sr else (7, 8, 9, 10),
+        in_axes=(0, 0, None, 0, 0, 0, 0, 0, 0, 0) +
+                ((0, 0, 0, None) if args.sr else (None, None, None, None)),
+        out_axes=(0, 0, None, 0, 0, 0, 0) +
+                ((0, 0, 0) if args.sr else (None, None, None)),
+        static_broadcasted_argnums=13 if args.sr else (10, 11, 12, 13),
         donate_argnums=(3, 4))
-def update(params_van, params_flow, opt_state, state_indices, x, key, grads_acc,
+def update(params_van, params_flow, opt_state, state_indices, x, key,
+        data_acc, grads_acc, classical_score_acc, quantum_score_acc,
         classical_fisher_acc, quantum_fisher_acc, quantum_score_mean_acc, final_step):
 
     data, classical_lossfn, quantum_lossfn = observable_and_lossfn(
             params_van, params_flow, state_indices, x, key)
 
-    grad_params_van = jax.grad(classical_lossfn)(params_van)
-    grad_params_flow = jax.grad(quantum_lossfn)(params_flow)
+    grad_params_van, classical_score = jax.jacrev(classical_lossfn)(params_van)
+    grad_params_flow, quantum_score = jax.jacrev(quantum_lossfn)(params_flow)
     grads = grad_params_van, grad_params_flow
-    grads = jax.lax.pmean(grads, axis_name="p")
-    grads_acc = jax.tree_multimap(lambda acc, i: acc + i, grads_acc, grads)
+    grads, classical_score, quantum_score = jax.lax.pmean((grads, classical_score, quantum_score), axis_name="p")
+    data_acc, grads_acc, classical_score_acc, quantum_score_acc = jax.tree_multimap(lambda acc, i: acc + i, 
+                                        (data_acc, grads_acc, classical_score_acc, quantum_score_acc),
+                                        (data, grads, classical_score, quantum_score))
 
     if args.sr:
         classical_fisher, quantum_fisher, quantum_score_mean = fishers_fn(params_van, params_flow, state_indices, x)
@@ -289,14 +294,24 @@ def update(params_van, params_flow, opt_state, state_indices, x, key, grads_acc,
         quantum_score_mean_acc += quantum_score_mean
 
     if final_step:
-        grads_acc, classical_fisher_acc, quantum_fisher_acc, quantum_score_mean_acc = \
-                jax.tree_map(lambda acc: acc / args.acc_steps,
-                             (grads_acc, classical_fisher_acc, quantum_fisher_acc, quantum_score_mean_acc))
+        data_acc, grads_acc, classical_score_acc, quantum_score_acc = jax.tree_map(lambda acc: acc / args.acc_steps,
+                                            (data_acc, grads_acc, classical_score_acc, quantum_score_acc))
+        grad_params_van, grad_params_flow = grads_acc
+        grad_params_van = jax.tree_multimap(lambda grad, classical_score: grad - data_acc["F_mean"] * classical_score,
+                                            grad_params_van, classical_score_acc)
+        grad_params_flow = jax.tree_multimap(lambda grad, quantum_score: grad - data_acc["E_mean"] * quantum_score,
+                                            grad_params_flow, quantum_score_acc)
+        grads_acc = grad_params_van, grad_params_flow
+
+        if args.sr:
+            classical_fisher_acc /= args.acc_steps
+            quantum_fisher_acc /= args.acc_steps
+            quantum_score_mean_acc /= args.acc_steps
         updates, opt_state = optimizer.update(grads_acc, opt_state,
                                 params=(classical_fisher_acc, quantum_fisher_acc, quantum_score_mean_acc) if args.sr else None)
         params_van, params_flow = optax.apply_updates((params_van, params_flow), updates)
 
-    return params_van, params_flow, opt_state, data, grads_acc, \
+    return params_van, params_flow, opt_state, data_acc, grads_acc, classical_score_acc, quantum_score_acc, \
             classical_fisher_acc, quantum_fisher_acc, quantum_score_mean_acc
 
 log_filename = os.path.join(path, "data.txt")
@@ -305,8 +320,14 @@ f = open(log_filename, "w" if args.epoch_finished == 0 else "a",
 
 for i in range(args.epoch_finished + 1, args.epoch + 1):
 
-    grads_acc = jax.tree_map(jnp.zeros_like, (params_van, params_flow))
-    grads_acc = shard(grads_acc)
+    data_acc = replicate({"F_mean": 0., "F2_mean": 0.,
+                          "E_mean": 0., "E2_mean": 0.,
+                          "K_mean": 0., "K2_mean": 0.,
+                          "V_mean": 0., "V2_mean": 0.,
+                          "S_mean": 0., "S2_mean": 0.,
+                         }, num_devices)
+    grads_acc = shard( jax.tree_map(jnp.zeros_like, (params_van, params_flow)) )
+    classical_score_acc, quantum_score_acc = shard( jax.tree_map(jnp.zeros_like, (params_van, params_flow)) )
     if args.sr:
         classical_fisher_acc = replicate(jnp.zeros((raveled_params_van.size, raveled_params_van.size)), num_devices)
         quantum_fisher_acc = replicate(jnp.zeros((raveled_params_flow.size, raveled_params_flow.size)), num_devices)
@@ -321,29 +342,25 @@ for i in range(args.epoch_finished + 1, args.epoch + 1):
                                                logp, x, params_flow,
                                                args.mc_steps, args.mc_stddev, L)
         accept_rate_acc += accept_rate
-        final_step = (acc == args.acc_steps - 1)
+        final_step = (acc == (args.acc_steps-1))
 
-        params_van, params_flow, opt_state, data, grads_acc, \
+        params_van, params_flow, opt_state, data_acc, grads_acc, classical_score_acc, quantum_score_acc, \
         classical_fisher_acc, quantum_fisher_acc, quantum_score_mean_acc \
-            = update(params_van, params_flow, opt_state, state_indices, x, keys, grads_acc,
+            = update(params_van, params_flow, opt_state, state_indices, x, keys,
+                     data_acc, grads_acc, classical_score_acc, quantum_score_acc,
                      classical_fisher_acc, quantum_fisher_acc, quantum_score_mean_acc, final_step)
 
-        data = jax.tree_map(lambda x: x[0], data)
-        if acc == 0:
-            data_acc = data
-        else:
-            data_acc = jax.tree_multimap(lambda acc, i: acc + i, data_acc, data)
-
+    data = jax.tree_map(lambda x: x[0], data_acc)
     accept_rate = accept_rate_acc[0] / args.acc_steps
-    data = jax.tree_map(lambda acc: acc / args.acc_steps, data_acc)
-    K, K2_mean, V, V2_mean, E, E2_mean, F, F2_mean, S, S2_mean = \
-            data["K_mean"], data["K2_mean"], data["V_mean"], data["V2_mean"], \
-            data["E_mean"], data["E2_mean"], data["F_mean"], data["F2_mean"], \
-            data["S_mean"], data["S2_mean"]
+    F, F2_mean = data["F_mean"], data["F2_mean"]
+    E, E2_mean = data["E_mean"], data["E2_mean"]
+    K, K2_mean = data["K_mean"], data["K2_mean"]
+    V, V2_mean = data["V_mean"], data["V2_mean"]
+    S, S2_mean = data["S_mean"], data["S2_mean"]
+    F_std = jnp.sqrt((F2_mean - F**2) / (args.batch*args.acc_steps))
+    E_std = jnp.sqrt((E2_mean - E**2) / (args.batch*args.acc_steps))
     K_std = jnp.sqrt((K2_mean - K**2) / (args.batch*args.acc_steps))
     V_std = jnp.sqrt((V2_mean - V**2) / (args.batch*args.acc_steps))
-    E_std = jnp.sqrt((E2_mean - E**2) / (args.batch*args.acc_steps))
-    F_std = jnp.sqrt((F2_mean - F**2) / (args.batch*args.acc_steps))
     S_std = jnp.sqrt((S2_mean - S**2) / (args.batch*args.acc_steps))
 
     # Note the quantities with energy dimension obtained above are in units of Ry/rs^2.

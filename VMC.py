@@ -62,16 +62,18 @@ def make_loss(log_prob, logpsi, logpsi_grad_laplacian, kappa, G, L, rs, Vconst, 
 
             tv = jax.lax.pmean(jnp.abs(Floc - F_mean).mean(), axis_name="p")
             Floc_clipped = jnp.clip(Floc, F_mean - 5.0*tv, F_mean + 5.0*tv)
-            gradF_phi = (logp_states * (Floc_clipped - F_mean)).mean()
-            return gradF_phi
+            gradF_phi = (logp_states * Floc_clipped).mean()
+            classical_score = logp_states.mean()
+            return gradF_phi, classical_score
 
         def quantum_lossfn(params_flow):
             logpsix = logpsi(x, params_flow, state_indices)
 
             tv = jax.lax.pmean(jnp.abs(Eloc - E_mean).mean(), axis_name="p")
             Eloc_clipped = jnp.clip(Eloc, E_mean - 5.0*tv, E_mean + 5.0*tv)
-            gradF_theta = 2 * (logpsix * (Eloc_clipped - E_mean).conj()).real.mean()
-            return gradF_theta
+            gradF_theta = 2 * (logpsix * Eloc_clipped.conj()).real.mean()
+            quantum_score = 2 * logpsix.real.mean()
+            return gradF_theta, quantum_score
 
         return observable, classical_lossfn, quantum_lossfn
 
