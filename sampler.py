@@ -35,10 +35,8 @@ def make_autoregressive_sampler(network, sp_indices, n, num_states, mask_fn=Fals
             key, subkey = jax.random.split(key)
             # logits.shape: (batch, n, num_states)
             logits = jax.vmap(_logits, (None, 0), 0)(params, state_indices)
-            state_indices = jax.ops.index_update(
-                                state_indices,
-                                jax.ops.index[:, i],
-                                jax.random.categorical(subkey, logits[:, i, :], axis=-1))
+            state_indices = state_indices.at[:, i].set(
+                            jax.random.categorical(subkey, logits[:, i, :], axis=-1))
         return state_indices
 
     def log_prob(params, sample):
