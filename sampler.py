@@ -1,8 +1,6 @@
 import jax
 import jax.numpy as jnp
 
-from functools import partial
-
 def make_autoregressive_sampler(network, sp_indices, n, num_states, mask_fn=False):
 
     def _mask(state_idx):
@@ -39,10 +37,10 @@ def make_autoregressive_sampler(network, sp_indices, n, num_states, mask_fn=Fals
                             jax.random.categorical(subkey, logits[:, i, :], axis=-1))
         return state_indices
 
-    def log_prob(params, sample):
-        logits = _logits(params, sample)
+    def log_prob(params, state_idx):
+        logits = _logits(params, state_idx)
         logp = jax.nn.log_softmax(logits, axis=-1)
-        logp = logp[jnp.arange(n), sample].sum()
+        logp = logp[jnp.arange(n), state_idx].sum()
         return logp
 
     if mask_fn:

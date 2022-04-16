@@ -24,34 +24,35 @@ def sp_orbitals(dim, Emax=60):
         Compute index (n_1, ..., n_dim) and corresponding energy n_1^2 + ... + n_dim^2
     of all single-particle plane wave in spatial dimension `dim` whose energy
     does not exceed `Emax`.
+        This function only serves to set up the momentum grid, hence zero twist angle
+    (i.e., PBC) is used.
 
     OUTPUT SHAPES:
-        indices: (n_orbitals, dim), Es: (n_orbitals)
+        indices: (n_orbitals, dim), Es: (n_orbitals,)
         (n_orbitals stands for total number of single-particle plane wave orbitals
-    that fulfil the criteria.)
+    that fulfill the criteria.)
     """
     n_max = int(np.floor(np.sqrt(Emax)))
-    indices = []
-    Es = []
-    if dim == 2:
-        for nx in range(-n_max, n_max+1):
-            for ny in range(-n_max, n_max+1):
-                E = nx**2 + ny**2
-                if E <= Emax:
-                    indices.append((nx, ny))
-                    Es.append(E)
-    elif dim == 3:
-        for nx in range(-n_max, n_max+1):
-            for ny in range(-n_max, n_max+1):
-                for nz in range(-n_max, n_max+1):
-                    E = nx**2 + ny**2 + nz**2
-                    if E <= Emax:
-                        indices.append((nx, ny, nz))
-                        Es.append(E)
-    indices, Es = np.array(indices), np.array(Es)
+    n = np.arange(-n_max, n_max+1)
+    nis = np.meshgrid(*( [n]*dim ))
+    indices = np.array([ni.flatten() for ni in nis]).T
+    Es = (indices**2).sum(axis=-1)
+    indices, Es = indices[Es<=Emax], Es[Es<=Emax]
+
     sort_idx = Es.argsort()
     indices, Es = indices[sort_idx], Es[sort_idx]
     return indices, Es
+
+def twist_sort(indices, twist):
+    """
+        Reorder the single-particle indices according to the energy under a given
+    twist angle.
+    """
+    indices_twist = indices + twist
+    Es_twist = (indices_twist**2).sum(axis=-1)
+    sort = Es_twist.argsort()
+    indices_twist, Es_twist = indices_twist[sort], Es_twist[sort]
+    return indices_twist, Es_twist
 
 def manybody_orbitals(n, dim, Ecut):
     """
@@ -81,7 +82,7 @@ if __name__ == "__main__":
     for dim in (2, 3):
         indices, Es = sp_orbitals(dim)
         print("Es:", Es, Es.shape)
-        #print("indices:\n", indices, indices.shape)
+        print("indices:\n", indices, indices.shape)
 
         print("---- Closed-shell (spinless) electron numbers in dim = %d ----" % dim)
         Ef = Es[0]

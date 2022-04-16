@@ -18,6 +18,8 @@ parser.add_argument("--dim", type=int, default=2, help="spatial dimension")
 parser.add_argument("--rs", type=float, default=10.0, help="rs")
 parser.add_argument("--Theta", type=float, default=0.15, help="dimensionless temperature T/Ef")
 
+parser.add_argument("--twist", type=float, nargs="+", default=[1/4, 1/4], help="(scaled) twist angle in the range [-1/2, 1/2]^dim")
+
 # many-body state distribution: autoregressive transformer.
 parser.add_argument("--Emax", type=int, default=25, help="energy cutoff for the single-particle orbitals")
 parser.add_argument("--nlayers", type=int, default=2, help="CausalTransformer: number of layers")
@@ -66,22 +68,27 @@ elif dim == 2:
     beta = 1/ (4 * args.Theta)
 print("n = %d, dim = %d, L = %f" % (n, dim, L))
 
+twist = jnp.array(args.twist)
+print("twist:", twist)
+
 ####################################################################################
 
 print("\n========== Initialize single-particle orbitals ==========")
 
 from orbitals import sp_orbitals
 sp_indices, Es = sp_orbitals(dim, args.Emax)
-sp_indices, Es = jnp.array(sp_indices), jnp.array(Es)
 Ef = Es[n-1]
 print("beta = %f, Ef = %d, Emax = %d, corresponding delta_logit = %f"
         % (beta, Ef, args.Emax, beta * (2*jnp.pi/L)**2 * (args.Emax - Ef)))
-
-sp_indices, Es = sp_indices[::-1], Es[::-1]
 num_states = Es.size
 print("Number of available single-particle orbitals: %d" % num_states)
 from scipy.special import comb
 print("Total number of many-body states (%d in %d): %f" % (n, num_states, comb(num_states, n)))
+
+from orbitals import twist_sort
+sp_indices_twist, Es_twist = twist_sort(sp_indices, twist)
+del sp_indices, Es
+sp_indices_twist, Es_twist = jnp.array(sp_indices_twist)[::-1], jnp.array(Es_twist)[::-1]
 
 ####################################################################################
 
@@ -93,14 +100,14 @@ def forward_fn(state_idx):
     model = Transformer(num_states, args.nlayers, args.modelsize, args.nheads, args.nhidden)
     return model(state_idx)
 van = hk.transform(forward_fn)
-state_idx_dummy = sp_indices[-n:].astype(jnp.float64)
+state_idx_dummy = sp_indices_twist[-n:].astype(jnp.float64)
 params_van = van.init(key, state_idx_dummy)
 
 raveled_params_van, _ = ravel_pytree(params_van)
 print("#parameters in the autoregressive model: %d" % raveled_params_van.size)
 
 from sampler import make_autoregressive_sampler, make_classical_score
-sampler, log_prob_novmap = make_autoregressive_sampler(van, sp_indices, n, num_states)
+sampler, log_prob_novmap = make_autoregressive_sampler(van, sp_indices_twist, n, num_states)
 log_prob = jax.vmap(log_prob_novmap, (None, 0), 0)
 
 ####################################################################################
@@ -113,7 +120,8 @@ pre_sr, pre_damping, pre_maxnorm = True, 0.001, 0.001
 pre_batch = 8192
 
 freefermion_path = args.folder + "freefermion/pretraining/" \
-                + "n_%d_dim_%d_Theta_%f_Emax_%d/" % (n, dim, args.Theta, args.Emax) \
+                + "n_%d_dim_%d_Theta_%f_Emax_%d" % (n, dim, args.Theta, args.Emax) \
+                + ("_twist" + "_%f"*dim + "/") % tuple(twist) \
                 + "nlayers_%d_modelsize_%d_nheads_%d_nhidden_%d" % \
                     (args.nlayers, args.modelsize, args.nheads, args.nhidden) \
                 + ("_damping_%.5f_maxnorm_%.5f" % (pre_damping, pre_maxnorm)
@@ -134,12 +142,14 @@ else:
     print("No pretrained free-fermion model found. Initialize parameters from scratch...")
     from freefermion.pretraining import pretrain
     params_van = pretrain(van, params_van,
-                          n, dim, args.Theta, args.Emax,
+                          n, dim, args.Theta, args.Emax, twist,
                           freefermion_path, key,
                           pre_lr, pre_sr, pre_damping, pre_maxnorm,
                           pre_batch, epoch=5000)
     print("Initialization done. Save the model to file: %s" % pretrained_model_filename)
     checkpoint.save_data(params_van, pretrained_model_filename)
+
+exit(0)
 
 ####################################################################################
 

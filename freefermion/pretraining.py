@@ -2,6 +2,7 @@ import jax
 from jax.config import config
 config.update("jax_enable_x64", True)
 import jax.numpy as jnp
+import numpy as np
 
 from sampler import make_autoregressive_sampler
 
@@ -31,7 +32,7 @@ def make_loss(log_prob, Es, beta):
     return loss_fn
 
 def pretrain(van, params_van,
-             n, dim, Theta, Emax,
+             n, dim, Theta, Emax, twist,
              path, key,
              lr, sr, damping, max_norm,
              batch, epoch=10000):
@@ -44,22 +45,24 @@ def pretrain(van, params_van,
         L = jnp.sqrt(jnp.pi*n)
         beta = 1/ (4 * Theta)
 
-    from orbitals import sp_orbitals
-    sp_indices, Es = sp_orbitals(dim, Emax)
-    sp_indices = jnp.array(sp_indices[::-1])
-    Es = (2*jnp.pi/L)**2 * jnp.array(Es[::-1])
+    from orbitals import sp_orbitals, twist_sort
+    sp_indices, _ = sp_orbitals(dim, Emax)
+    sp_indices_twist, Es_twist = twist_sort(sp_indices, twist)
+    del sp_indices
+    sp_indices_twist = jnp.array(sp_indices_twist)[::-1]
+    Es_twist = (2*jnp.pi/L)**2 * jnp.array(Es_twist)[::-1]
 
     from mpmath import mpf, mp
     from freefermion.analytic import Z_E
-    F, E, S = Z_E(n, dim, mpf(str(Theta)), Emax)
+    F, E, S = Z_E(n, dim, mpf(str(Theta)), [mpf(twist_i) for twist_i in np.array(twist)], Emax)
     print("Analytic results for the thermodynamic quantities: "
             "F: %s, E: %s, S: %s" % (mp.nstr(F), mp.nstr(E), mp.nstr(S)))
 
-    num_states = Es.size
-    sampler, log_prob_novmap = make_autoregressive_sampler(van, sp_indices, n, num_states)
+    num_states = Es_twist.size
+    sampler, log_prob_novmap = make_autoregressive_sampler(van, sp_indices_twist, n, num_states)
     log_prob = jax.vmap(log_prob_novmap, (None, 0), 0)
 
-    loss_fn = make_loss(log_prob, Es, beta)
+    loss_fn = make_loss(log_prob, Es_twist, beta)
 
     import optax
     if sr:

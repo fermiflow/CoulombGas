@@ -1,4 +1,9 @@
 __pycache__/
+.pytest_cache/
 *.pyc 
 
-run/
+data/
+
+jobs/
+run/jobfile.sh
+run/slurm-*.out
