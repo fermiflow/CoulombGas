@@ -149,8 +149,6 @@ else:
     print("Initialization done. Save the model to file: %s" % pretrained_model_filename)
     checkpoint.save_data(params_van, pretrained_model_filename)
 
-exit(0)
-
 ####################################################################################
 
 print("\n========== Initialize normalizing flow ==========")
@@ -168,8 +166,8 @@ print("#parameters in the flow model: %d" % raveled_params_flow.size)
 
 from logpsi import make_logpsi, make_logphi_logjacdet, make_logpsi_grad_laplacian, \
                    make_logp, make_quantum_score
-logpsi_novmap = make_logpsi(flow, sp_indices, L)
-logphi, logjacdet = make_logphi_logjacdet(flow, sp_indices, L)
+logpsi_novmap = make_logpsi(flow, sp_indices_twist, L)
+logphi, logjacdet = make_logphi_logjacdet(flow, sp_indices_twist, L)
 logp = make_logp(logpsi_novmap)
 
 ####################################################################################
@@ -206,6 +204,7 @@ from utils import shard, replicate
 
 path = args.folder + "n_%d_dim_%d_rs_%f_Theta_%f" % (n, dim, args.rs, args.Theta) \
                    + "_Emax_%d" % args.Emax \
+                   + ("_twist" + "_%f"*dim) % tuple(twist) \
                    + "_nlayers_%d_modelsize_%d_nheads_%d_nhidden_%d" % \
                       (args.nlayers, args.modelsize, args.nheads, args.nhidden) \
                    + "_depth_%d_spsize_%d_tpsize_%d" % \
@@ -258,8 +257,8 @@ else:
                                    sampler, params_van,
                                    logp, x, params_flow,
                                    args.mc_steps, args.mc_stddev, L)
-    print("keys shape:", keys.shape, "\t\ttype:", type(keys))
-    print("x shape:", x.shape, "\t\ttype:", type(x))
+    print("keys shape:", keys.shape)
+    print("x shape:", x.shape)
 
 ####################################################################################
 
