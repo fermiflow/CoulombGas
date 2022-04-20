@@ -120,8 +120,8 @@ pre_sr, pre_damping, pre_maxnorm = True, 0.001, 0.001
 pre_batch = 8192
 
 freefermion_path = args.folder + "freefermion/pretraining/" \
-                + "n_%d_dim_%d_Theta_%f_Emax_%d" % (n, dim, args.Theta, args.Emax) \
-                + ("_twist" + "_%f"*dim + "/") % tuple(twist) \
+                + "n_%d_dim_%d_Theta_%.2f_Emax_%d" % (n, dim, args.Theta, args.Emax) \
+                + ("_twist" + "_%.3f"*dim + "/") % tuple(twist) \
                 + "nlayers_%d_modelsize_%d_nheads_%d_nhidden_%d" % \
                     (args.nlayers, args.modelsize, args.nheads, args.nhidden) \
                 + ("_damping_%.5f_maxnorm_%.5f" % (pre_damping, pre_maxnorm)
@@ -202,9 +202,9 @@ print("\n========== Checkpointing ==========")
 
 from utils import shard, replicate
 
-path = args.folder + "n_%d_dim_%d_rs_%f_Theta_%f" % (n, dim, args.rs, args.Theta) \
+path = args.folder + "n_%d_dim_%d_rs_%.1f_Theta_%.2f" % (n, dim, args.rs, args.Theta) \
                    + "_Emax_%d" % args.Emax \
-                   + ("_twist" + "_%f"*dim) % tuple(twist) \
+                   + ("_twist" + "_%.3f"*dim) % tuple(twist) \
                    + "_nlayers_%d_modelsize_%d_nheads_%d_nhidden_%d" % \
                       (args.nlayers, args.modelsize, args.nheads, args.nhidden) \
                    + "_depth_%d_spsize_%d_tpsize_%d" % \
