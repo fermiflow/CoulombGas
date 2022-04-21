@@ -44,6 +44,39 @@ def tabc_specialpoints(n, dim, Theta, Emax, Nk):
 
     return F_mean, E_mean, S_mean
 
+def tabc_specialpoints_T_dependence(n, dim, Nk):
+
+    path = "/data/xiehao/CoulombGas/tabc/freefermion/analytic/T_dependence"
+    if not os.path.isdir(path):
+        os.makedirs(path)
+        print("Create directory: %s" % path)
+    filename = os.path.join(path, "n_%d_dim_%d_Nk_%d.txt" % (n, dim, Nk))
+    if os.path.isfile(filename):
+        print("The freefermion data file %s already exists. Skip..." % filename)
+        exit(0)
+
+    fp = open(filename, "w", buffering=1, newline="\n")
+    fp.write("#Theta\tf\te\ts\n")
+
+    twists, weights = Monkhorst_Pack(dim, Nk)
+    Thetas = mp.linspace(mpf("0.02"), mpf("0.60"), 59)
+
+    for Theta in Thetas:
+        f, e, s = mpf("0.0"), mpf("0.0"), mpf("0.0")
+        for twist, weight in zip(twists, weights):
+            twist = [mpf(twist_i) for twist_i in twist]
+            F, E, S = Z_E(n, dim, mpf(str(Theta)), twist, Emax=None)
+            f += weight * F/n
+            e += weight * E/n
+            s += weight * S/n
+        print("Theta: %s\tf: %s\te: %s\ts: %s" %
+                    (mp.nstr(Theta),
+                     mp.nstr(f), mp.nstr(e), mp.nstr(s)))
+        fp.write( ("%s" + "\t%s"*3 + "\n") %
+                    (mp.nstr(Theta),
+                     mp.nstr(f), mp.nstr(e), mp.nstr(s)) )
+    fp.close()
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Analytic calculation of free fermions in the canonical ensemble using TABC. "
@@ -64,3 +97,9 @@ if __name__ == "__main__":
     analytics = tabc_specialpoints(n, dim, Theta, Emax, Nk)
     print("Analytic results for the thermodynamic quantities:\n"
             "F_mean: %f, E_mean: %f, S_mean: %f" % analytics)
+    """
+    n, dim, Nk = 57, 2, 2
+    print("Compute the temperature dependence of the non-interacting entropy.")
+    print("---- n = %d, dim = %d, Nk = %d ----" % (n, dim, Nk))
+    tabc_specialpoints_T_dependence(n, dim, Nk)
+    """
