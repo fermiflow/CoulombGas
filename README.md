@@ -19,7 +19,7 @@ To start, try running the following commands to launch a training of 13 spin-pol
 
 ```shell
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-python main.py --n 13 --dim 2 --rs 10.0 --Theta 0.15 --Emax 25 --sr --batch 4096 --num_devices 8 --acc_steps 2
+python src/main.py --n 13 --dim 2 --rs 10.0 --Theta 0.15 --Emax 25 --sr --batch 4096 --num_devices 8 --acc_steps 2
 ```
 
 Note that we effectively sample a batch of totally **8192** samples in each training step. However, such a batch size will result in too large a memory consumption to be accommodated by 8 GPUs. To overcome this problem, we choose to split the batch into two equal pieces, and accumulate the gradient and various observables for each piece in two sequential substeps. In other words, the argument `batch` in the command above actually stands for the batch per accumulation step.
@@ -29,7 +29,7 @@ If you have only, say, 4 GPUs, you can set `batch`, `num_devices`, `acc_steps` t
 For the detail meanings of other command line arguments, run
 
 ```shell
-python main.py --help
+python src/main.py --help
 ```
 
 or directly refer to the source code.
