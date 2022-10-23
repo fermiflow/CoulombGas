@@ -4,12 +4,12 @@ config.update("jax_enable_x64", True)
 key = jax.random.PRNGKey(42)
 import jax.numpy as jnp
 
-from orbitals import sp_orbitals
+from src.orbitals import sp_orbitals
 import haiku as hk
-from sampler import make_autoregressive_sampler
+from src.sampler import make_autoregressive_sampler
 
 def transformer(M):
-    from autoregressive import Transformer
+    from src.autoregressive import Transformer
 
     num_layers, model_size, num_heads = 2, 32, 4
     hidden_size = 48

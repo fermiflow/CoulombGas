@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 
-from slater import logslaterdet
+from .slater import logslaterdet
 from functools import partial
 
 def make_logpsi(flow, sp_indices, L):

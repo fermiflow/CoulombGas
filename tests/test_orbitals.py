@@ -1,4 +1,4 @@
-from orbitals import sp_orbitals, manybody_orbitals
+from src.orbitals import sp_orbitals, manybody_orbitals
 
 def test_sp_orbitals():
     for dim in (2, 3):

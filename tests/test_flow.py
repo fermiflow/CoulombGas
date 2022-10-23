@@ -38,7 +38,7 @@ def generic_test_flow(model, L):
     assert jnp.allclose(Pz, z[P, :])
 
 def test_FermiNet():
-    from flow import FermiNet
+    from src.flow import FermiNet
     depth = 3
     spsize, tpsize = 16, 16
     L = 1.234

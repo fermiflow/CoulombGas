@@ -24,7 +24,7 @@ if __name__=='__main__':
     branch = Repository('.').head.shorthand
 
     # Program and arguments ########################################################
-    program0 = "python ../main.py"
+    program0 = "python ../src/main.py"
 
     args = {"folder": os.path.join(conf.folder, repo, branch, ""),
             "n": 57, "dim": 2, "rs": 1.0, "Theta": 0.15,

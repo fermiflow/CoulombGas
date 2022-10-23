@@ -6,7 +6,7 @@ import jax.numpy as jnp
 
 import numpy as np
 import haiku as hk
-from autoregressive import CausalSelfAttention, Transformer
+from src.autoregressive import CausalSelfAttention, Transformer
 from jax.flatten_util import ravel_pytree
 
 def test_CausalSelfAttention_params():

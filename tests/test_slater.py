@@ -4,8 +4,8 @@ config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 import numpy as np
-from orbitals import sp_orbitals
-from slater import logslaterdet0, logslaterdet
+from src.orbitals import sp_orbitals
+from src.slater import logslaterdet0, logslaterdet
 
 def test_slaterdet():
     """

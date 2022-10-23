@@ -1,10 +1,10 @@
 from mpmath import mpf, mp
-from freefermion.analytic import Z_E
+from src.freefermion.analytic import Z_E
 
 import numpy as np
 import os
 
-from specialpoints import Monkhorst_Pack
+from src.specialpoints import Monkhorst_Pack
 
 def _path(n, dim, Theta, Emax):
     return "/data/xiehao/CoulombGas/tabc/freefermion/analytic/" \

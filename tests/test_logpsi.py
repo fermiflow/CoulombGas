@@ -5,13 +5,13 @@ import jax.numpy as jnp
 
 import numpy as np
 import haiku as hk
-from orbitals import sp_orbitals
-from logpsi import make_logpsi, make_logpsi_grad_laplacian, make_logp
+from src.orbitals import sp_orbitals
+from src.logpsi import make_logpsi, make_logpsi_grad_laplacian, make_logp
 
 key = jax.random.PRNGKey(42)
 
 def fermiflow(depth, spsize, tpsize, L, n, dim):
-    from flow import FermiNet
+    from src.flow import FermiNet
     def flow_fn(x):
         model = FermiNet(depth, spsize, tpsize, L)
         return model(x)
