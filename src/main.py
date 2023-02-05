@@ -292,7 +292,7 @@ def update(params_van, params_flow, opt_state, state_indices, x, key,
     grad_params_flow, quantum_score = jax.jacrev(quantum_lossfn)(params_flow)
     grads = grad_params_van, grad_params_flow
     grads, classical_score, quantum_score = jax.lax.pmean((grads, classical_score, quantum_score), axis_name="p")
-    data_acc, grads_acc, classical_score_acc, quantum_score_acc = jax.tree_multimap(lambda acc, i: acc + i, 
+    data_acc, grads_acc, classical_score_acc, quantum_score_acc = jax.tree_map(lambda acc, i: acc + i, 
                                         (data_acc, grads_acc, classical_score_acc, quantum_score_acc),
                                         (data, grads, classical_score, quantum_score))
 
@@ -306,9 +306,9 @@ def update(params_van, params_flow, opt_state, state_indices, x, key,
         data_acc, grads_acc, classical_score_acc, quantum_score_acc = jax.tree_map(lambda acc: acc / args.acc_steps,
                                             (data_acc, grads_acc, classical_score_acc, quantum_score_acc))
         grad_params_van, grad_params_flow = grads_acc
-        grad_params_van = jax.tree_multimap(lambda grad, classical_score: grad - data_acc["F_mean"] * classical_score,
+        grad_params_van = jax.tree_map(lambda grad, classical_score: grad - data_acc["F_mean"] * classical_score,
                                             grad_params_van, classical_score_acc)
-        grad_params_flow = jax.tree_multimap(lambda grad, quantum_score: grad - data_acc["E_mean"] * quantum_score,
+        grad_params_flow = jax.tree_map(lambda grad, quantum_score: grad - data_acc["E_mean"] * quantum_score,
                                             grad_params_flow, quantum_score_acc)
         grads_acc = grad_params_van, grad_params_flow
 
