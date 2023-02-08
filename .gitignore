@@ -5,3 +5,6 @@ __pycache__/
 jobs/
 run/jobfile.sh
 run/slurm-*.out
+
+# Jupyter Notebook
+.ipynb_checkpoints
