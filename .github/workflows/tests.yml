@@ -26,6 +26,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install --upgrade "jax[cpu]"
           pip install git+https://github.com/deepmind/dm-haiku
+          pip install optax
           pip install mpmath
 
           pip install typing_extensions
