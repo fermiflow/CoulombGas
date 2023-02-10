@@ -27,6 +27,8 @@ jobs:
           pip install --upgrade "jax[cpu]"
           pip install git+https://github.com/deepmind/dm-haiku
           pip install mpmath
+
+          pip install typing_extensions
       - name: Test with pytest
         run: |
           pytest
