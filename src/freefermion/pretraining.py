@@ -4,7 +4,7 @@ config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import numpy as np
 
-from sampler import make_autoregressive_sampler
+from ..sampler import make_autoregressive_sampler
 
 def make_loss(log_prob, Es, beta):
     
@@ -45,7 +45,7 @@ def pretrain(van, params_van,
         L = jnp.sqrt(jnp.pi*n)
         beta = 1/ (4 * Theta)
 
-    from orbitals import sp_orbitals, twist_sort
+    from ..orbitals import sp_orbitals, twist_sort
     sp_indices, _ = sp_orbitals(dim, Emax)
     sp_indices_twist, Es_twist = twist_sort(sp_indices, twist)
     del sp_indices
@@ -53,7 +53,7 @@ def pretrain(van, params_van,
     Es_twist = (2*jnp.pi/L)**2 * jnp.array(Es_twist)[::-1]
 
     from mpmath import mpf, mp
-    from freefermion.analytic import Z_E
+    from .analytic import Z_E
     F, E, S = Z_E(n, dim, mpf(str(Theta)), [mpf(twist_i) for twist_i in np.array(twist)], Emax)
     print("Analytic results for the thermodynamic quantities: "
             "F: %s, E: %s, S: %s" % (mp.nstr(F), mp.nstr(E), mp.nstr(S)))
@@ -66,9 +66,9 @@ def pretrain(van, params_van,
 
     import optax
     if sr:
-        from sampler import make_classical_score
+        from ..sampler import make_classical_score
         score_fn = make_classical_score(log_prob_novmap)
-        from sr import fisher_sr
+        from ..sr import fisher_sr
         optimizer = fisher_sr(score_fn, damping, max_norm)
         print("Optimizer fisher_sr: damping = %.5f, max_norm = %.5f." % (damping, max_norm))
     else:

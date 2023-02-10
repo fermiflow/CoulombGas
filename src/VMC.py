@@ -3,7 +3,7 @@ import jax.numpy as jnp
 
 from functools import partial
 
-from MCMC import mcmc
+from .MCMC import mcmc
 
 @partial(jax.pmap, axis_name="p",
                    in_axes=(0, None, 0, None, 0, 0, None, None, None),
@@ -26,7 +26,7 @@ def sample_stateindices_and_x(key,
 
 ####################################################################################
 
-from potential import potential_energy
+from .potential import potential_energy
 
 def make_loss(log_prob, logpsi, logpsi_grad_laplacian, kappa, G, L, rs, Vconst, beta):
 

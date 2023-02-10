@@ -1,5 +1,5 @@
 from mpmath import mpf, mp
-from src.freefermion.analytic import Z_E
+from .analytic import Z_E
 
 import numpy as np
 import os

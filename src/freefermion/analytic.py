@@ -14,7 +14,7 @@ def z_e(dim, L, beta, twist, Emax=None):
     (to a given precision).
     """
     if Emax:
-        from orbitals import sp_orbitals
+        from ..orbitals import sp_orbitals
         sp_indices, _ = sp_orbitals(dim, Emax)
         Es = [(2*mp.pi/L)**2 *
                 mp.fsum((index_i+twist_i)**2 for index_i, twist_i in zip(index, twist))
