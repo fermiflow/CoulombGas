@@ -1,7 +1,7 @@
 # CoulombGas
 
 [![Build Status](https://github.com/fermiflow/CoulombGas/actions/workflows/tests.yml/badge.svg)](https://github.com/fermiflow/CoulombGas/actions)
-[![Paper](https://img.shields.io/badge/paper-arXiv:2201.03156-B31B1B.svg)](https://arxiv.org/abs/2201.03156)
+[![Paper](https://img.shields.io/badge/paper-SciPost%20Phys.%2014%2C%20154%20(2023)%20-B31B1B.svg)](https://scipost.org/SciPostPhys.14.6.154)
 
 This code implements the neural canonical transformation approach to the thermodynamic properties of uniform electron gas. Building on [JAX](https://github.com/google/jax), it utilizes (both forward- and reverse-mode) automatic differentiation and the [pmap](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap) mechanism to achieve a large-scale single-program multiple-data (SPMD) training on multiple GPUs.
 
@@ -43,13 +43,16 @@ To facilitate further developments, we also provide the trained models and logge
 ## To cite
 
 ```
-@misc{xie2022mast,
-      title={$m^\ast$ of two-dimensional electron gas: a neural canonical transformation study}, 
-      author={Hao Xie and Linfeng Zhang and Lei Wang},
-      year={2022},
-      eprint={2201.03156},
-      archivePrefix={arXiv},
-      primaryClass={cond-mat.stat-mech}
+@Article{10.21468/SciPostPhys.14.6.154,
+	title={{$m^*$ of two-dimensional electron gas: A neural canonical transformation study}},
+	author={Hao Xie and Linfeng Zhang and  Lei Wang},
+	journal={SciPost Phys.},
+	volume={14},
+	pages={154},
+	year={2023},
+	publisher={SciPost},
+	doi={10.21468/SciPostPhys.14.6.154},
+	url={https://scipost.org/10.21468/SciPostPhys.14.6.154},
 }
 ```
 

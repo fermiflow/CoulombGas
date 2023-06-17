@@ -22,7 +22,7 @@ class FermiNet(hk.Module):
         rij = x[:, None, :] - x
         cos_rij, sin_rij = jnp.cos(2*jnp.pi/self.L * rij), jnp.sin(2*jnp.pi/self.L * rij)
         n, _ = x.shape
-        dij = jnp.linalg.norm(sin_rij + jnp.eye(n)[..., None], axis=-1) * (1 - jnp.eye(n))
+        dij = jnp.linalg.norm(jnp.sin(jnp.pi/self.L * rij) + jnp.eye(n)[..., None], axis=-1) *(1.0 - jnp.eye(n))
         return jnp.concatenate((cos_rij, sin_rij, dij[..., None]), axis=-1)
 
     def _f(self, spstream, tpstream):
